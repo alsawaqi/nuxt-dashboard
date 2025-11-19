@@ -1,3 +1,16 @@
+<script setup lang="ts">
+import { useAuthStore } from '~/stores/auth'
+
+const auth = useAuthStore()
+
+
+const logout = async () => {
+  await auth.logout()
+  await navigateTo('/')
+}
+
+
+</script>
 <template>
  <div class="navbar-header">
             <div class="row align-items-center justify-content-between">
@@ -336,7 +349,7 @@
                                         </a>
                                     </li>
                                     <li>
-                                        <a class="dropdown-item text-black px-0 py-8 hover-bg-transparent hover-text-danger d-flex align-items-center gap-3" href="javascript:void(0)">
+                                        <a class="dropdown-item text-black px-0 py-8 hover-bg-transparent hover-text-danger d-flex align-items-center gap-3" href="javascript:void(0)" @click="logout">
                                             <iconify-icon icon="lucide:power" class="icon text-xl"></iconify-icon> Log Out
                                         </a>
                                     </li>
