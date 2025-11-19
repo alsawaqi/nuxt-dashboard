@@ -1,0 +1,1 @@
+{"root":["./nuxt.config.ts","./app/plugins/vendor.client.ts","./types/global.d.ts","./app/app.vue","./app/pages/index.vue"],"errors":true,"version":"5.9.3"}

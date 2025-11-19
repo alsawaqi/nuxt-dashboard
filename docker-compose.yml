@@ -1,0 +1,42 @@
+services:
+  charity-nuxt-admin-ui:
+    build:
+      context: .
+      dockerfile: docker/dev/nuxt.dockerfile
+    container_name: charity-nuxt-admin-ui-dev
+    working_dir: /app
+    volumes:
+      - ./nuxt-app:/app
+      - nuxt_admin_node_modules:/app/node_modules
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
+    ports:
+      - "3000:3000"   # direct dev access: http://localhost:3000
+    networks:
+      - charity_net
+    environment:
+      HOST: 0.0.0.0
+      CHOKIDAR_USEPOLLING: "true"
+      BEAMS_INSTANCE_ID: e1944000-0a47-4005-9ac3-1f0480b9ae16
+      NITRO_PORT: 3000
+      NITRO_HOST: 0.0.0.0
+      # Laravel API (nginx on 8082) – adjust if your port is different
+      NUXT_PUBLIC_API_BASE_URL: "http://localhost:8082"
+
+  nginx:
+    image: nginx:latest
+    container_name: charity-nuxt-admin-ui-nginx
+    ports:
+      - "8083:80"    # optional: http://localhost:8083 via nginx
+    volumes:
+      - ./docker/dev/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - charity-nuxt-admin-ui
+    networks:
+      - charity_net
+
+networks:
+  charity_net:
+    external: true    # join the same network as Laravel/Postgres
+
+volumes:
+  nuxt_admin_node_modules:

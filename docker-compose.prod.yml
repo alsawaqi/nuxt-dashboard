@@ -1,0 +1,26 @@
+services:
+  nuxt:
+    build:
+      context: ./nuxt-app
+      dockerfile: ../docker/prod/nuxt.dockerfile
+    container_name: nuxt-charity-prod
+    restart: always
+    networks:
+      - charity_net
+    environment:
+      NODE_ENV: production
+      NUXT_PUBLIC_API_BASE: https://api.mithqal.net
+
+  nginx:
+    image: nginx:alpine
+    container_name: nuxt-nginx-prod
+    volumes:
+      - ./docker/prod/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - nuxt
+    networks:
+      - charity_net
+
+networks:
+  charity_net:
+    external: true

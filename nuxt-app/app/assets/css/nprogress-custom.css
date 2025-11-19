@@ -1,0 +1,18 @@
+/* Make the bar thicker */
+#nprogress .bar {
+  height: 4px; /* default is 2px */
+  background: #3b82f6 !important; /* Tailwind blue or any color you like */
+}
+
+/* Peg shadow effect */
+#nprogress .peg {
+  box-shadow: 0 0 10px #3b82f6, 0 0 5px #3b82f6;
+}
+
+/* Optional: Adjust the spinner (if enabled) */
+#nprogress .spinner-icon {
+  width: 24px;
+  height: 24px;
+  border-top-color: #3b82f6;
+  border-left-color: #3b82f6;
+}
