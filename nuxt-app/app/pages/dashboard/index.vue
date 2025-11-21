@@ -189,12 +189,17 @@ const loadTransactions = async (): Promise<void> => {
 
 }
 
+const config = useRuntimeConfig()
+ 
+
 onMounted(async () => {
  
   await loadData()
   await loadTotals()
   await loadTransactions()
   await loadTopDevices()
+
+ console.log('Has API key?', !!config.OPENAI_API_KEY)
 });
 
 

@@ -16,13 +16,30 @@ const audioUrl = ref<string | null>(null)
 let mediaRecorder: MediaRecorder | null = null
 let chunks: BlobPart[] = []
 
-const startRecording = async () => {
+ const startRecording = async () => {
   error.value = ''
   transcript.value = ''
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
-    mediaRecorder = new MediaRecorder(stream)
+
+    // Choose a supported mime type
+    let mimeType = ''
+    if (MediaRecorder.isTypeSupported('audio/webm')) {
+      mimeType = 'audio/webm'
+    } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
+      mimeType = 'audio/ogg'
+    } else {
+      // fallback – let browser choose, but log it
+      console.warn('No explicit audio/webm or audio/ogg support, using default')
+    }
+
+    mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream)
+
+    console.log('Using mimeType:', mimeType || mediaRecorder.mimeType)
+
     chunks = []
 
     mediaRecorder.ondataavailable = (e: BlobEvent) => {
@@ -30,10 +47,10 @@ const startRecording = async () => {
     }
 
     mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: 'audio/webm' })
-      audioUrl.value = URL.createObjectURL(blob)
+      const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
+      console.log('Recorded blob type:', blob.type, 'size:', blob.size)
 
-      // Send to our STT API
+      audioUrl.value = URL.createObjectURL(blob)
       await sendToStt(blob)
     }
 
@@ -45,6 +62,7 @@ const startRecording = async () => {
     error.value = 'Could not access microphone. Check permissions / HTTPS.'
   }
 }
+
 
 const stopRecording = () => {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
@@ -61,13 +79,12 @@ const playRecording = () => {
 
 const sendToStt = async (blob: Blob) => {
   try {
-    const formData = new FormData()
-    formData.append('file', blob, 'audio.webm')
-    formData.append('model', 'gpt-4o-mini-transcribe') // 👈 important
-
     const res = await fetch('/api/stt', {
       method: 'POST',
-      body: formData
+      headers: {
+        'Content-Type': blob.type || 'audio/webm'
+      },
+      body: blob
     })
 
     if (!res.ok) {

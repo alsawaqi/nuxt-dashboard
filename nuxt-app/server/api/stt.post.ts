@@ -1,10 +1,10 @@
- // server/api/stt.post.ts
+// server/api/stt.post.ts
 import type { H3Event } from 'h3'
-import { getHeader, readRawBody } from 'h3'
+import { readRawBody } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const config = useRuntimeConfig()
-  const apiKey = config.OPENAI_API_KEY
+  const apiKey = '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'
 
   if (!apiKey) {
     throw createError({
@@ -13,24 +13,31 @@ export default defineEventHandler(async (event: H3Event) => {
     })
   }
 
-  const contentType = getHeader(event, 'content-type') || ''
-  if (!contentType.includes('multipart/form-data')) {
+  // Read raw audio bytes sent from browser (audio/webm)
+  const rawBody = await readRawBody(event)
+
+  if (!rawBody || rawBody.length === 0) {
     throw createError({
       statusCode: 400,
-      statusMessage: 'Content-Type must be multipart/form-data'
+      statusMessage: 'No audio received'
     })
   }
 
-  // 👇 Read the raw body as Buffer instead of streaming the request directly
-  const rawBody = await readRawBody(event) // returns Buffer
+  // Build multipart/form-data for OpenAI using Node's FormData & Blob
+  const form = new FormData()
+  const blob = new Blob([Buffer.from(rawBody)], { type: 'audio/webm' })
+
+  form.append('file', blob, 'audio.webm')
+  // Use whisper-1 (very tolerant with formats, supports webm)
+  form.append('model', 'whisper-1')
 
   const openAiRes = await fetch('https://api.openai.com/v1/audio/transcriptions', {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${apiKey}`,
-      'Content-Type': contentType // keep original boundary from client
+      Authorization: `Bearer ${apiKey}`
+      // Don't set Content-Type manually – fetch will set correct boundary
     },
-    body: rawBody as any // Buffer is fine here
+    body: form as any
   })
 
   if (!openAiRes.ok) {
@@ -43,6 +50,6 @@ export default defineEventHandler(async (event: H3Event) => {
   }
 
   const data = await openAiRes.json()
-  // OpenAI returns { text: "..." }
+  // { text: "..." }
   return data
 })
