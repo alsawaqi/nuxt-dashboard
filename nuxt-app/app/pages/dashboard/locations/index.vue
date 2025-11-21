@@ -1,11 +1,11 @@
-<script lang="ts" setup>
-import { onMounted, ref } from 'vue'
+ <script setup lang="ts">
+import { ref } from 'vue'
 
 definePageMeta({
   layout: 'admin',
   middleware: 'auth' as any,
+ 
 })
-
 
 const isRecording = ref(false)
 const status = ref('Idle')
@@ -23,16 +23,14 @@ const startRecording = async () => {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
-    // Choose a supported mime type
-    // In startRecording(), change the mimeType selection:
-    let mimeType = 'audio/mp4' // or 'audio/mpeg' for MP3
-    if (MediaRecorder.isTypeSupported('audio/mp4')) {
-      mimeType = 'audio/mp4'
-    } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
-      mimeType = 'audio/mpeg'
-    } else {
-      // fallback – let browser choose, but log it
-      console.warn('No explicit audio/webm or audio/ogg support, using default')
+    // Use a supported mime type
+    let mimeType = ''
+    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      mimeType = 'audio/webm;codecs=opus'
+    } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+      mimeType = 'audio/webm'
+    } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+      mimeType = 'audio/ogg;codecs=opus'
     }
 
     mediaRecorder = mimeType
@@ -48,8 +46,14 @@ const startRecording = async () => {
     }
 
     mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: mimeType || 'audio/webm' })
+      const blob = new Blob(chunks, { type: mimeType || mediaRecorder!.mimeType })
       console.log('Recorded blob type:', blob.type, 'size:', blob.size)
+
+      if (blob.size === 0) {
+        error.value = 'Recorded audio is empty'
+        status.value = 'Error'
+        return
+      }
 
       audioUrl.value = URL.createObjectURL(blob)
       await sendToStt(blob)
@@ -63,7 +67,6 @@ const startRecording = async () => {
     error.value = 'Could not access microphone. Check permissions / HTTPS.'
   }
 }
-
 
 const stopRecording = () => {
   if (!mediaRecorder || mediaRecorder.state === 'inactive') return
@@ -80,12 +83,14 @@ const playRecording = () => {
 
 const sendToStt = async (blob: Blob) => {
   try {
+    const formData = new FormData()
+    formData.append('file', blob, 'audio.webm') // field name "file" as docs
+    formData.append('model', 'gpt-4o-mini-transcribe') 
+    // (or "whisper-1" – both are supported in docs):contentReference[oaicite:1]{index=1}
+
     const res = await fetch('/api/stt', {
       method: 'POST',
-      headers: {
-        'Content-Type': blob.type || 'audio/webm'
-      },
-      body: blob
+      body: formData,
     })
 
     if (!res.ok) {
@@ -98,29 +103,29 @@ const sendToStt = async (blob: Blob) => {
     status.value = 'Done'
   } catch (e: any) {
     console.error(e)
-    error.value = e?.message || 'Error while sending audio to STT'
+    error.value = e?.message || 'Error sending audio to STT'
     status.value = 'Error'
   }
 }
-
-
 </script>
 
-
-
 <template>
-
-
   <div class="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
-    <h1 class="text-2xl font-semibold">Speech to Text Test</h1>
+    <h1 class="text-2xl font-semibold">Speech to Text (OpenAI)</h1>
 
     <div class="flex gap-2">
-      <button @click="startRecording" :disabled="isRecording"
-        class="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50">
+      <button
+        @click="startRecording"
+        :disabled="isRecording"
+        class="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50"
+      >
         🎙 Start
       </button>
-      <button @click="stopRecording" :disabled="!isRecording"
-        class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50">
+      <button
+        @click="stopRecording"
+        :disabled="!isRecording"
+        class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
+      >
         ⏹ Stop
       </button>
     </div>
@@ -129,7 +134,11 @@ const sendToStt = async (blob: Blob) => {
       Status: {{ status }}
     </p>
 
-    <button v-if="audioUrl" @click="playRecording" class="px-3 py-1 rounded border text-sm">
+    <button
+      v-if="audioUrl"
+      @click="playRecording"
+      class="px-3 py-1 rounded border text-sm"
+    >
       ▶ Play Last Recording
     </button>
 
@@ -144,6 +153,4 @@ const sendToStt = async (blob: Blob) => {
       {{ error }}
     </p>
   </div>
-
-
 </template>

@@ -61,7 +61,7 @@
                         </li>
 
                          <li>
-                            <NuxtLink to="/dashboard/locations">
+                            <NuxtLink to="/dashboard/ai">
                               <i class="ri-robot-2-line text-xl me-6 d-flex w-auto"></i>
                               <span>Ai Analysis</span>
                             </NuxtLink>

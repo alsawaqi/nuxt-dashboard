@@ -3,7 +3,7 @@ import { H3Event, readBody } from 'h3'
 
 export default defineEventHandler(async (event: H3Event) => {
   const config = useRuntimeConfig()
-  const apiKey = config.OPENAI_API_KEY
+  const apiKey = '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'
 
   if (!apiKey) {
     // This means env/config problem
