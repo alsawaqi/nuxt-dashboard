@@ -55,62 +55,52 @@ onMounted(async() => {
                 </div>
                 <div class="card-body">
 
-                  <table class="table bordered-table mb-0" id="dataTable" data-page-length='10'>
-                        <thead>
-                            <tr>
-                        <th scope="col">#</th>
-                         <th scope="col">Device Name</th>
-                        <th scope="col">Device Make</th>
-                        <th scope="col">Device Model</th>
-                        <th scope="col">OS Type</th>
-                        <th scope="col">OS Version</th>
-                        <th scope="col">Battery Status</th>
-                        <th scope="col">Connection State</th>
-                        <th scope="col">Connection Status</th>
-                        <th scope="col">Last Seen</th>
-                        <th scope="col">View</th>
+                 <div class="table-responsive">
+  <table class="table bordered-table mb-0 w-100" id="dataTable" data-page-length="10">
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Device Name</th>
+        <th>Device Make</th>
+        <th>Device Model</th>
+        <th>OS Type</th>
+        <th>OS Version</th>
+        <th>Battery Status</th>
+        <th>Connection State</th>
+        <th>Connection Status</th>
+        <th>Last Seen</th>
+        <th>View</th>
+      </tr>
+    </thead>
 
-                      
-                       
-                      </tr>
-                        </thead>
+    <tbody>
+      <tr
+        v-for="device in devices.devices"
+        :key="device.device?.id"
+      >
+        <td>{{ device.device?.id }}</td>
+        <td>{{ device.device?.name }}</td>
+        <td>{{ device.device?.make }}</td>
+        <td>{{ device.device?.model }}</td>
+        <td>{{ device.device?.os_type }}</td>
+        <td>{{ device.device?.os_version }}</td>
+        <td>{{ device.device?.battery_status }} %</td>
+        <td>{{ device.device?.connection_state }}</td>
+        <td>{{ device.device?.connection_status }}</td>
+        <td>{{ device.device?.last_seen_on }}</td>
+        <td>
+          <NuxtLink
+            :to="`/dashboard/devices/${device.device?.id}`"
+            class="btn btn-sm btn-primary"
+          >
+            View
+          </NuxtLink>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</div>
 
-                        <tbody>
-
-                   
-
-                            <tr v-for="device in devices.devices">
-
-                              <td>{{ device.device?.id }}</td>
-                              <td>{{ device.device?.name }}</td>
-                              <td>{{ device.device?.make }}</td>
-                              <td>{{ device.device?.model }}</td>
-                              <td>{{ device.device?.os_type }}</td>
-                              <td>{{ device.device?.os_version }}</td>
-                              <td>{{ device.device?.battery_status }} %</td>
-                              <td>{{ device.device?.connection_state }}</td>
-                              <td>{{ device.device?.connection_status }}</td>
-                              <td>{{ device.device?.last_seen_on }}</td>
-                              <td>  
-                                
-                                <NuxtLink :to="`/dashboard/devices/${device.device?.id}`" class="btn btn-sm btn-primary">
-                                  View
-                                </NuxtLink>
-                              
-                              </td>
-                              
-
-
-                            </tr> 
-
-                            
-
-
-
-                        </tbody>
-
- 
-                      </table>
 
 
                   </div>

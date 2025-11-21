@@ -17,7 +17,7 @@
                         <iconify-icon icon="solar:home-smile-angle-outline" class="menu-icon"></iconify-icon>
                         <span>Dashboard</span>
                     </NuxtLink>
-                   
+
                 </li>
                 <li class="sidebar-menu-group-title">Application</li>
                 <li>
@@ -26,40 +26,71 @@
                         <span>Devices</span>
                     </NuxtLink>
                 </li>
-                <li>
-                    <NuxtLink to="/dashboard/status">
-                       <iconify-icon icon="mdi:checkbox-marked-circle-outline" class="menu-icon"></iconify-icon>
-                        <span>Status</span>
-                    </NuxtLink>
-                </li>
-                <li>
-                    <NuxtLink to="/dashboard/locations">
-                       <iconify-icon icon="material-symbols:map-outline" class="menu-icon"></iconify-icon>
-                        <span>Locations</span>
-                    </NuxtLink>
-                </li>
+
+
+               
+
                 <li>
                     <NuxtLink to="/dashboard/charity">
-                      <iconify-icon icon="mdi:hand-heart-outline" class="menu-icon"></iconify-icon>
-                        <span>Charity</span>
+                        <iconify-icon icon="mdi:hand-heart-outline" class="menu-icon"></iconify-icon>
+                        <span>Charities</span>
                     </NuxtLink>
                 </li>
-               
-           
- 
 
-      
 
-            
-           
-        
-          
-            
-          
 
-           
-                      
-              
+
+                 <li class="dropdown">
+                    <a href="javascript:void(0)">
+                        <i class="ri-robot-2-line text-xl me-6 d-flex w-auto"></i>
+                        <span>Status (Working Progress)</span>
+                    </a>
+                    <ul class="sidebar-submenu">
+                        <li>
+                            <NuxtLink to="/dashboard/status">
+                                <iconify-icon icon="mdi:checkbox-marked-circle-outline"
+                                    class="menu-icon"></iconify-icon>
+                                <span>Status by Device</span>
+                            </NuxtLink>
+                        </li>
+                        <li>
+                            <NuxtLink to="/dashboard/locations">
+                                <iconify-icon icon="material-symbols:map-outline" class="menu-icon"></iconify-icon>
+                                <span>Status by Location</span>
+                            </NuxtLink>
+                        </li>
+
+                         <li>
+                            <NuxtLink to="/dashboard/locations">
+                              <i class="ri-robot-2-line text-xl me-6 d-flex w-auto"></i>
+                              <span>Ai Analysis</span>
+                            </NuxtLink>
+                        </li>
+                    </ul>
+                </li>
+
+
+
+
+                  <li>
+                    <NuxtLink to="/dashboard/charity">
+                       <iconify-icon icon="solar:pie-chart-outline" class="menu-icon"></iconify-icon>
+                        <span>Reports (Working Progress)</span>
+                    </NuxtLink>
+                </li>
+
+
+
+
+
+
+
+
+
+
+
+
+
             </ul>
         </div>
     </aside>
