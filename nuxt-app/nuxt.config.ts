@@ -50,6 +50,7 @@ export default defineNuxtConfig({
   },
   css: [],
   runtimeConfig: {
+    OPENAI_API_KEY:  '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',   
     public: {
       apiBase: process.env.NUXT_PUBLIC_API_BASE || "http://localhost:8082",
       googleMapsApiKey: 'AIzaSyAUsVUylnMMQBHW7_gN5pvKhwVtpnnqB-c',
