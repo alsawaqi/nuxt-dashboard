@@ -21,7 +21,6 @@ export default defineNuxtPlugin(async () => {
   (window as any).$ = (window as any).jQuery = (window as any).$;
 
   await loadScript("/vendor/bootstrap.bundle.min.js");
-  await loadScript("/vendor/apexcharts.min.js");
   await loadScript("/vendor/dataTables.min.js");
   await loadScript("/vendor/iconify-icon.min.js");
   await loadScript("/vendor/jquery-ui.min.js");
