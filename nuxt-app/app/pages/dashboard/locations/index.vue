@@ -1,5 +1,5 @@
 <script lang="ts" setup>
-import { onMounted ,ref } from 'vue'
+import { onMounted, ref } from 'vue'
 
 definePageMeta({
   layout: 'admin',
@@ -16,7 +16,7 @@ const audioUrl = ref<string | null>(null)
 let mediaRecorder: MediaRecorder | null = null
 let chunks: BlobPart[] = []
 
- const startRecording = async () => {
+const startRecording = async () => {
   error.value = ''
   transcript.value = ''
 
@@ -24,11 +24,12 @@ let chunks: BlobPart[] = []
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
 
     // Choose a supported mime type
-    let mimeType = ''
-    if (MediaRecorder.isTypeSupported('audio/webm')) {
-      mimeType = 'audio/webm'
-    } else if (MediaRecorder.isTypeSupported('audio/ogg')) {
-      mimeType = 'audio/ogg'
+    // In startRecording(), change the mimeType selection:
+    let mimeType = 'audio/mp4' // or 'audio/mpeg' for MP3
+    if (MediaRecorder.isTypeSupported('audio/mp4')) {
+      mimeType = 'audio/mp4'
+    } else if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+      mimeType = 'audio/mpeg'
     } else {
       // fallback – let browser choose, but log it
       console.warn('No explicit audio/webm or audio/ogg support, using default')
@@ -110,22 +111,16 @@ const sendToStt = async (blob: Blob) => {
 <template>
 
 
- <div class="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
+  <div class="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
     <h1 class="text-2xl font-semibold">Speech to Text Test</h1>
 
     <div class="flex gap-2">
-      <button
-        @click="startRecording"
-        :disabled="isRecording"
-        class="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50"
-      >
+      <button @click="startRecording" :disabled="isRecording"
+        class="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50">
         🎙 Start
       </button>
-      <button
-        @click="stopRecording"
-        :disabled="!isRecording"
-        class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
-      >
+      <button @click="stopRecording" :disabled="!isRecording"
+        class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50">
         ⏹ Stop
       </button>
     </div>
@@ -134,11 +129,7 @@ const sendToStt = async (blob: Blob) => {
       Status: {{ status }}
     </p>
 
-    <button
-      v-if="audioUrl"
-      @click="playRecording"
-      class="px-3 py-1 rounded border text-sm"
-    >
+    <button v-if="audioUrl" @click="playRecording" class="px-3 py-1 rounded border text-sm">
       ▶ Play Last Recording
     </button>
 
