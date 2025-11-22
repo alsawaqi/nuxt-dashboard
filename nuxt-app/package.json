@@ -10,6 +10,7 @@
     "postinstall": "nuxt prepare"
   },
   "dependencies": {
+    "@googlemaps/js-api-loader": "^2.0.2",
     "@pinia/nuxt": "^0.11.3",
     "@types/fluent-ffmpeg": "^2.1.28",
     "apexcharts": "^5.3.6",
@@ -25,6 +26,7 @@
     "vue3-apexcharts": "^1.10.0"
   },
   "devDependencies": {
+    "@types/google.maps": "^3.58.1",
     "@types/node": "^24.10.1",
     "@types/nprogress": "^0.2.3",
     "vue-tsc": "^3.1.4"

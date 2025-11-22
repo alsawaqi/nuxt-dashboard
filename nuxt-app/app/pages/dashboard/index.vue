@@ -1,22 +1,43 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed, nextTick } from 'vue'
 import type { ApexOptions } from 'apexcharts'
 import { useAuthStore } from '~/stores/auth'
 definePageMeta({
   layout: 'admin',
   middleware: 'auth' as any,
 })
-const { $api } = useNuxtApp()
+const { $api, $google } = useNuxtApp()
 
 interface DailyStat {
   date: string
   total_amount: string | number
 }
 
+
+
+
+interface HeatmapPoint {
+  lat: number
+  lng: number
+  weight: number
+}
+
+
+
+
+const pieColors = ['#22c55e', '#3b82f6', '#6366f1', '#ef4444', '#f97316', '#eab308']
 const loading = ref(true)
 const error = ref<string | null>(null)
 const datas = ref<any>([])
 const transactions = ref<any>([])
+
+const heatmapContainer = ref<HTMLElement | null>(null)
+
+const map = ref<google.maps.Map | null>(null)
+const heatmapLayer = ref<google.maps.visualization.HeatmapLayer | null>(null)
+
+const heatmapLoading = ref(false)
+const heatmapError = ref<string | null>(null)
 
 const categories = ref<string[]>([])
 const series = ref([
@@ -25,6 +46,184 @@ const series = ref([
     data: [] as number[],
   },
 ])
+
+
+interface TopBank {
+  bank_transaction_id: number | string
+  label: string
+  total_amount: number | string
+}
+
+// 🔹 Top Banks (donut)
+const loadingTopBanks = ref(true)
+const errorTopBanks = ref<string | null>(null)
+
+const labelsBanks = ref<string[]>([])
+const seriesPieBanks = ref<number[]>([])
+
+const totalBanks = computed(() =>
+  seriesPieBanks.value.reduce((sum, v) => sum + (Number(v) || 0), 0)
+)
+
+const pieRowsBanks = computed(() => {
+  if (!labelsBanks.value.length || !seriesPieBanks.value.length || !totalBanks.value) return []
+
+  return labelsBanks.value.map((label, idx) => {
+    const value = Number(seriesPieBanks.value[idx] || 0)
+    const percentage = totalBanks.value ? (value / totalBanks.value) * 100 : 0
+
+    return {
+      label,
+      value,
+      percentage,
+      color: pieColors[idx % pieColors.length],
+    }
+  })
+})
+
+const chartOptionsPieBanks = ref<ApexOptions>({
+  chart: {
+    type: 'donut',
+    height: 260,
+  },
+  labels: [],          // will be filled after API call
+  colors: pieColors,
+  legend: {
+    show: false,       // we use our own table legend
+  },
+  dataLabels: {
+    enabled: false,
+  },
+  stroke: {
+    width: 0,
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '70%',
+        labels: {
+          show: true,
+          name: {
+            show: true,
+            offsetY: 8,
+            fontSize: '13px',
+            color: '#6b7280',
+            formatter: () => 'Total Value',
+          },
+          value: {
+            show: true,
+            fontSize: '26px',
+            fontWeight: 600,
+            formatter: (val: string) => Number(val).toFixed(0),
+          },
+          total: {
+            show: true,
+            label: 'Total Value',
+            fontSize: '14px',
+            color: '#6b7280',
+            formatter: (w: any) => {
+              const sum = w.globals.seriesTotals.reduce(
+                (a: number, b: number) => a + b,
+                0
+              )
+              return sum.toFixed(0)
+            },
+          },
+        },
+      },
+    },
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => val.toFixed(2),
+    },
+  },
+})
+
+const loadingTopLocations = ref(true)
+const errorTopLocations = ref<string | null>(null)
+
+const labelsLocations = ref<string[]>([])
+const seriesPieLocations = ref<number[]>([])
+
+const totalLocations = computed(() =>
+  seriesPieLocations.value.reduce((sum, v) => sum + (Number(v) || 0), 0)
+)
+
+const pieRowsLocations = computed(() => {
+  if (!labelsLocations.value.length || !seriesPieLocations.value.length || !totalLocations.value) return []
+
+  return labelsLocations.value.map((label, idx) => {
+    const value = Number(seriesPieLocations.value[idx] || 0)
+    const percentage = totalLocations.value ? (value / totalLocations.value) * 100 : 0
+
+    return {
+      label,
+      value,
+      percentage,
+      color: pieColors[idx % pieColors.length],
+    }
+  })
+})
+
+const chartOptionsPieLocations = ref<ApexOptions>({
+  chart: {
+    type: 'donut',
+    height: 260,
+  },
+  labels: [],              // will be set after API call
+  colors: pieColors,
+  legend: {
+    show: false,           // we'll use our own table
+  },
+  dataLabels: {
+    enabled: false,
+  },
+  stroke: {
+    width: 0,
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '70%',
+        labels: {
+          show: true,
+          name: {
+            show: true,
+            offsetY: 8,
+            fontSize: '13px',
+            color: '#6b7280',
+            formatter: () => 'Total Value',
+          },
+          value: {
+            show: true,
+            fontSize: '26px',
+            fontWeight: 600,
+            formatter: (val: string) => Number(val).toFixed(0),
+          },
+          total: {
+            show: true,
+            label: 'Total Value',
+            fontSize: '14px',
+            color: '#6b7280',
+            formatter: (w: any) => {
+              const sum = w.globals.seriesTotals.reduce(
+                (a: number, b: number) => a + b,
+                0
+              )
+              return sum.toFixed(0)
+            },
+          },
+        },
+      },
+    },
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => val.toFixed(2),
+    },
+  },
+})
 
 const chartOptions = ref<ApexOptions>({
   chart: {
@@ -73,6 +272,13 @@ interface TopDevice {
   total_amount: number | string
 }
 
+
+interface TopLocation {
+  charity_location_id: number
+  label: string
+  total_amount: number | string
+}
+
 const loadingTopDevices = ref(true)
 const errorTopDevices = ref<string | null>(null)
 
@@ -81,23 +287,91 @@ const seriesPie = ref<number[]>([])
 
 const chartOptionsPie = ref<ApexOptions>({
   chart: {
-    type: 'pie',
-    height: 280,
+    type: 'donut',
+    height: 260,
   },
+  labels: [],          // will be filled after API call
+  colors: pieColors,   // matches table dots
   legend: {
-    position: 'bottom',
+    show: false,       // we’ll use our own table legend
   },
   dataLabels: {
-    enabled: true,
-    formatter: (val: number) => `${val.toFixed(1)}%`,
+    enabled: false,
+  },
+  stroke: {
+    width: 0,
+  },
+  plotOptions: {
+    pie: {
+      donut: {
+        size: '70%',
+        labels: {
+          show: true,
+          name: {
+            show: true,
+            offsetY: 8,
+            fontSize: '13px',
+            color: '#6b7280',
+            formatter: () => 'Total Value',
+          },
+          value: {
+            show: true,
+            fontSize: '26px',
+            fontWeight: 600,
+            formatter: (val: string) => Number(val).toFixed(0),
+          },
+          total: {
+            show: true,
+            label: 'Total Value',
+            fontSize: '14px',
+            color: '#6b7280',
+            formatter: (w: any) => {
+              const sum = w.globals.seriesTotals.reduce(
+                (a: number, b: number) => a + b,
+                0
+              )
+              return sum.toFixed(0)
+            },
+          },
+        },
+      },
+    },
   },
   tooltip: {
     y: {
       formatter: (val: number) => val.toFixed(2),
     },
   },
-  // labels will be injected reactively below
 })
+
+
+
+const loadTopLocations = async () => {
+  loadingTopLocations.value = true
+  errorTopLocations.value = null
+
+  try {
+    const { $api } = useNuxtApp()
+    const { data } = await $api.get('/api/stats/charity/top-location')
+
+    const items = (data.data || []) as TopLocation[]
+
+    labelsLocations.value = items.map((item) => item.label)
+    seriesPieLocations.value = items.map((item) => Number(item.total_amount) || 0)
+
+    chartOptionsPieLocations.value = {
+      ...chartOptionsPieLocations.value,
+      labels: labelsLocations.value,
+      colors: pieColors,
+    }
+  } catch (e) {
+    console.error(e)
+    errorTopLocations.value = 'Failed to load top locations'
+  } finally {
+    loadingTopLocations.value = false
+  }
+}
+
 
 const loadTopDevices = async () => {
   loadingTopDevices.value = true
@@ -112,10 +386,10 @@ const loadTopDevices = async () => {
     labels.value = items.map((item) => item.label)
     seriesPie.value = items.map((item) => Number(item.total_amount) || 0)
 
-    // update labels in chart options
     chartOptionsPie.value = {
       ...chartOptionsPie.value,
       labels: labels.value,
+      colors: pieColors,
     }
   } catch (e) {
     console.error(e)
@@ -124,6 +398,30 @@ const loadTopDevices = async () => {
     loadingTopDevices.value = false
   }
 }
+
+// total of all slices
+const totalPie = computed(() =>
+  seriesPie.value.reduce((sum, v) => sum + (Number(v) || 0), 0)
+)
+
+// rows for the table under the chart
+const pieRows = computed(() => {
+  if (!labels.value.length || !seriesPie.value.length || !totalPie.value) return []
+
+  return labels.value.map((label, idx) => {
+    const value = Number(seriesPie.value[idx] || 0)
+    const percentage = totalPie.value ? (value / totalPie.value) * 100 : 0
+
+    return {
+      label,
+      value,
+      percentage,
+      color: pieColors[idx % pieColors.length],
+    }
+  })
+})
+
+
 const loadData = async (): Promise<void> => {
   loading.value = true
   error.value = null
@@ -189,17 +487,114 @@ const loadTransactions = async (): Promise<void> => {
 
 }
 
-const config = useRuntimeConfig()
- 
+ const loadTopBanks = async () => {
+  loadingTopBanks.value = true
+  errorTopBanks.value = null
+
+  try {
+    const { $api } = useNuxtApp()
+    const { data } = await $api.get('/api/stats/charity/top-banks')
+
+    const items = (data.data || []) as TopBank[]
+
+    labelsBanks.value = items.map((item) => item.label)
+    seriesPieBanks.value = items.map((item) => Number(item.total_amount) || 0)
+
+    chartOptionsPieBanks.value = {
+      ...chartOptionsPieBanks.value,
+      labels: labelsBanks.value,
+      colors: pieColors,
+    }
+  } catch (e) {
+    console.error(e)
+    errorTopBanks.value = 'Failed to load top banks'
+  } finally {
+    loadingTopBanks.value = false
+  }
+}
+
+
+const fetchHeatmapData = async (): Promise<HeatmapPoint[]> => {
+  const { data } = await $api.get('/api/stats/charity/heatmap')
+  console.log('Heatmap data:', data)
+  return (data.data || []) as HeatmapPoint[]
+}
+
+
+const initHeatmap = async () => {
+  heatmapLoading.value = true
+  heatmapError.value = null
+
+  await nextTick() // ensure DOM + ref are there
+
+  if (!heatmapContainer.value) {
+    console.warn('heatmapContainer ref is still null')
+    heatmapLoading.value = false
+    return
+  }
+
+  try {
+    const google = await $google()
+
+    const { Map } =
+      (await google.maps.importLibrary('maps')) as google.maps.MapsLibrary
+    const { HeatmapLayer } =
+      (await google.maps.importLibrary('visualization')) as google.maps.VisualizationLibrary
+
+    const points = await fetchHeatmapData()
+    console.log('Heatmap points:', points)
+
+    if (!points.length) {
+      heatmapError.value = 'No payment data available for the selected period.'
+      return
+    }
+
+    const first = points[0]
+    
+    if (!first) {
+      heatmapError.value = 'No valid payment data available.'
+      return
+    }
+
+    map.value = new Map(heatmapContainer.value, {
+      center: { lat: first.lat, lng: first.lng },
+      zoom: 13,
+      mapTypeControl: false,
+      streetViewControl: false,
+      fullscreenControl: true,
+    })
+
+    const heatmapData = points.map((p) => ({
+      location: new google.maps.LatLng(p.lat, p.lng),
+      weight: p.weight ?? 1,
+    }))
+
+    heatmapLayer.value = new HeatmapLayer({
+      data: heatmapData as any,
+      map: map.value,
+      radius: 30,
+      opacity: 0.7,
+    })
+  } catch (err) {
+    console.error(err)
+    heatmapError.value = 'Failed to load payment heatmap.'
+  } finally {
+    heatmapLoading.value = false
+  }
+}
+
 
 onMounted(async () => {
- 
   await loadData()
   await loadTotals()
   await loadTransactions()
+  await initHeatmap() 
+ 
   await loadTopDevices()
+  await loadTopLocations()
+  await loadTopBanks()
 
- console.log('Has API key?', !!config.OPENAI_API_KEY)
+
 });
 
 
@@ -306,12 +701,7 @@ onMounted(async () => {
               <h6 class="text-lg mb-0">Charity Statistic</h6>
 
               <!-- filter select -->
-              <select class="form-select bg-base form-select-sm w-auto">
-                <option value="today">Today</option>
-                <option value="yearly">Yearly</option>
-                <option value="monthly">Monthly</option>
-                <option value="weekly">Weekly</option>
-              </select>
+           
             </div>
 
             <div class="d-flex flex-wrap align-items-center gap-2 mt-8">
@@ -336,29 +726,55 @@ onMounted(async () => {
         <div class="card h-100">
           <div class="card-body">
             <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-              <h6 class="mb-2 fw-bold text-lg mb-0">Top Locations (Working Progress)</h6>
-              <a href="javascript:void(0)" class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
-                View All
-                <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
-              </a>
+              <h6 class="mb-2 fw-bold text-lg mb-0">Top Locations</h6>
+
             </div>
 
             <div class="mt-32">
+              <div v-if="loadingTopLocations" class="text-center py-4">
+                Loading top locations...
+              </div>
 
-              <!-- <div class="d-flex align-items-center justify-content-between gap-3 mb-24">
-                <div class="d-flex align-items-center">
-                  <img src="#" alt="" class="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden">
-                  <div class="flex-grow-1">
-                    <h6 class="text-md mb-0 fw-medium">Dianne Russell</h6>
-                    <span class="text-sm text-secondary-light fw-medium">Agent ID: 36254</span>
-                  </div>
+              <div v-else-if="errorTopLocations" class="text-danger py-4">
+                {{ errorTopLocations }}
+              </div>
+
+              <ClientOnly v-else>
+                <!-- Donut chart -->
+                <div class="d-flex justify-content-center mb-3">
+                  <apexchart type="donut" height="260" :options="chartOptionsPieLocations"
+                    :series="seriesPieLocations" />
                 </div>
-                <span class="text-primary-light text-md fw-medium">$20</span>
-              </div> -->
 
-
-
+                <!-- Legend table like your devices donut -->
+                <div class="mt-3">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Location</th>
+                        <th class="text-end">Value</th>
+                        <th class="text-end">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in pieRowsLocations" :key="row.label">
+                        <td>
+                          <span class="me-2 rounded-circle d-inline-block" :style="{
+                            width: '10px',
+                            height: '10px',
+                            backgroundColor: row.color,
+                          }"></span>
+                          {{ row.label }}
+                        </td>
+                        <td class="text-end">{{ row.value.toFixed(2) }}</td>
+                        <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </ClientOnly>
             </div>
+
 
           </div>
         </div>
@@ -369,11 +785,8 @@ onMounted(async () => {
         <div class="card h-100">
           <div class="card-body">
             <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-              <h6 class="mb-2 fw-bold text-lg mb-0">Top Devices (Working Progress)</h6>
-              <a href="javascript:void(0)" class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
-                View All
-                <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
-              </a>
+              <h6 class="mb-2 fw-bold text-lg mb-0">Top Devices</h6>
+             
             </div>
 
             <div class="mt-32">
@@ -386,12 +799,82 @@ onMounted(async () => {
               </div>
 
               <ClientOnly v-else>
-                <apexchart type="pie" height="260" :options="chartOptionsPie" :series="series" />
+                <!-- Donut chart -->
+                <div class="d-flex justify-content-center mb-3">
+                  <apexchart type="donut" height="260" :options="chartOptionsPie" :series="seriesPie" />
+                </div>
+
+                <!-- Legend table (like your screenshot) -->
+                <div class="mt-3">
+                  <table class="table table-sm align-middle mb-0">
+                    <thead>
+                      <tr>
+                        <th>Label</th>
+                        <th class="text-end">Value</th>
+                        <th class="text-end">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="row in pieRows" :key="row.label">
+                        <td>
+                          <span class="me-2 rounded-circle d-inline-block" :style="{
+                            width: '10px',
+                            height: '10px',
+                            backgroundColor: row.color,
+                          }"></span>
+                          {{ row.label }}
+                        </td>
+                        <td class="text-end">{{ row.value.toFixed(2) }}</td>
+                        <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               </ClientOnly>
             </div>
           </div>
         </div>
       </div>
+
+
+
+ <div class="card radius-16 mt-24">
+  <div class="card-header">
+    <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+      <h6 class="mb-2 fw-bold text-lg mb-0">Charity Heatmap</h6>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <ClientOnly>
+      <div class="position-relative">
+        <!-- The map container: ALWAYS rendered -->
+        <div
+          ref="heatmapContainer"
+          class="heatmap-map-wrapper"
+        ></div>
+
+        <!-- Loading overlay -->
+        <div
+          v-if="heatmapLoading"
+          class="heatmap-overlay d-flex align-items-center justify-content-center"
+        >
+          <span class="text-muted">Loading payment heatmap...</span>
+        </div>
+
+        <!-- Error message (below the map) -->
+        <div
+          v-if="heatmapError"
+          class="alert alert-warning mt-2 mb-0"
+        >
+          {{ heatmapError }}
+        </div>
+      </div>
+    </ClientOnly>
+  </div>
+</div>
+
+
 
 
 
@@ -452,7 +935,18 @@ onMounted(async () => {
                         <td class="text-center">
                           {{ transaction.charity_location?.name }}
                         </td>
-                        <td>{{ new Date(transaction.created_at).toLocaleDateString() }}</td>
+                        <<td>
+  {{
+    new Date(transaction.created_at).toLocaleString('en-GB', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    })
+  }}
+</td>
                       </tr>
 
                     </tbody>
@@ -477,16 +971,58 @@ onMounted(async () => {
 
             <div class="mt-32">
 
-              <!-- <div class="d-flex align-items-center justify-content-between gap-3 mb-24">
-                <div class="d-flex align-items-center">
-                  <img src="#" alt="" class="w-40-px h-40-px rounded-circle flex-shrink-0 me-12 overflow-hidden">
-                  <div class="flex-grow-1">
-                    <h6 class="text-md mb-0 fw-medium">Dianne Russell</h6>
-                    <span class="text-sm text-secondary-light fw-medium">Agent ID: 36254</span>
-                  </div>
-                </div>
-                <span class="text-primary-light text-md fw-medium">$20</span>
-              </div> -->
+             <div class="mt-32">
+  <div v-if="loadingTopBanks" class="text-center py-4">
+    Loading top banks...
+  </div>
+
+  <div v-else-if="errorTopBanks" class="text-danger py-4">
+    {{ errorTopBanks }}
+  </div>
+
+  <ClientOnly v-else>
+    <!-- Donut chart -->
+    <div class="d-flex justify-content-center mb-3">
+      <apexchart
+        type="donut"
+        height="260"
+        :options="chartOptionsPieBanks"
+        :series="seriesPieBanks"
+      />
+    </div>
+
+    <!-- Legend table -->
+    <div class="mt-3">
+      <table class="table table-sm align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Bank</th>
+            <th class="text-end">Value</th>
+            <th class="text-end">%</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in pieRowsBanks" :key="row.label">
+            <td>
+              <span
+                class="me-2 rounded-circle d-inline-block"
+                :style="{
+                  width: '10px',
+                  height: '10px',
+                  backgroundColor: row.color,
+                }"
+              ></span>
+              {{ row.label }}
+            </td>
+            <td class="text-end">{{ row.value.toFixed(2) }}</td>
+            <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </ClientOnly>
+</div>
+
 
 
 
@@ -501,3 +1037,23 @@ onMounted(async () => {
 
 
 </template>
+
+<style scoped>
+.heatmap-map-wrapper {
+  width: 100%;
+  height: 380px; /* adjust as needed */
+  border-radius: 16px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* Overlay to show loading on top of the map area */
+.heatmap-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.7);
+  z-index: 10;
+  font-size: 0.9rem;
+}
+
+</style>

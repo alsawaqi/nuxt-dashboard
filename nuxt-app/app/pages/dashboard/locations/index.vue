@@ -1,156 +1,520 @@
- <script setup lang="ts">
-import { ref } from 'vue'
+<script setup lang="ts">
+import { ref, computed, onMounted } from 'vue'
 
 definePageMeta({
   layout: 'admin',
   middleware: 'auth' as any,
- 
 })
 
-const isRecording = ref(false)
-const status = ref('Idle')
-const transcript = ref('')
-const error = ref('')
-const audioUrl = ref<string | null>(null)
+const { $api } = useNuxtApp()
 
-let mediaRecorder: MediaRecorder | null = null
-let chunks: BlobPart[] = []
+type RangeKey = '7d' | '30d' | '6m' | 'custom'
 
-const startRecording = async () => {
-  error.value = ''
-  transcript.value = ''
+interface CharityLocationOption {
+  id: number
+  name: string
+}
+
+interface CityOption {
+  id: number
+  name: string
+  charity_locations: CharityLocationOption[]
+}
+
+interface RegionOption {
+  id: number
+  name: string
+  cities: CityOption[]
+}
+
+interface CountryOption {
+  id: number
+  name: string
+  regions: RegionOption[]
+}
+
+interface CharityTransaction {
+  id: number
+  total_amount: number | string
+  status: string
+  created_at: string
+  bank?: { name?: string | null }
+  charity_location?: { name?: string | null }
+  device?: {
+    name?: string | null
+    DeviceModel?: {
+      name?: string | null
+      DeviceBrand?: { name?: string | null }
+    }
+  }
+}
+
+// Filters state
+const countries = ref<CountryOption[]>([])
+const selectedCountryId = ref<number | null>(null)
+const selectedRegionId = ref<number | null>(null)
+const selectedCityId = ref<number | null>(null)
+const selectedLocationId = ref<number | null>(null)
+
+const activeRange = ref<RangeKey>('7d')
+const from = ref('')
+const to = ref('')
+
+const loadingFilters = ref(false)
+const loading = ref(false)
+const error = ref<string | null>(null)
+
+// Stats + data
+const totalSuccess = ref(0)
+const totalFailed = ref(0)
+const successTransactions = ref<CharityTransaction[]>([])
+const failedTransactions = ref<CharityTransaction[]>([])
+
+// Computed cascaded options
+const regionsForCountry = computed<RegionOption[]>(() => {
+  const c = countries.value.find((c) => c.id === selectedCountryId.value)
+  return c?.regions ?? []
+})
+
+const citiesForRegion = computed<CityOption[]>(() => {
+  const r = regionsForCountry.value.find((r) => r.id === selectedRegionId.value)
+  return r?.cities ?? []
+})
+
+const locationsForCity = computed<CharityLocationOption[]>(() => {
+  const c = citiesForRegion.value.find((c) => c.id === selectedCityId.value)
+  return c?.charity_locations ?? []
+})
+
+const selectedLocationLabel = computed(() => {
+  const loc = locationsForCity.value.find((l) => l.id === selectedLocationId.value)
+  return loc ? loc.name : ''
+})
+
+// Load filters
+const loadFilters = async () => {
+  try {
+    loadingFilters.value = true
+    const { data } = await $api.get('/api/stats/charity/locations/filters')
+    countries.value = (data.data || []) as CountryOption[]
+  } catch (e: any) {
+    console.error(e)
+    error.value = 'Failed to load location filters.'
+  } finally {
+    loadingFilters.value = false
+  }
+}
+
+// Change handlers
+const onCountryChange = () => {
+  selectedRegionId.value = null
+  selectedCityId.value = null
+  selectedLocationId.value = null
+}
+
+const onRegionChange = () => {
+  selectedCityId.value = null
+  selectedLocationId.value = null
+}
+
+const onCityChange = () => {
+  selectedLocationId.value = null
+}
+
+const changeRange = (range: RangeKey) => {
+  activeRange.value = range
+  if (range !== 'custom') {
+    from.value = ''
+    to.value = ''
+    // auto-fetch if a location is chosen
+    if (selectedLocationId.value) {
+      fetchStatusByLocation()
+    }
+  }
+}
+
+// Main fetch
+const fetchStatusByLocation = async () => {
+  if (!selectedLocationId.value) {
+    error.value = 'Please select a charity location first.'
+    return
+  }
 
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    loading.value = true
+    error.value = null
 
-    // Use a supported mime type
-    let mimeType = ''
-    if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
-      mimeType = 'audio/webm;codecs=opus'
-    } else if (MediaRecorder.isTypeSupported('audio/webm')) {
-      mimeType = 'audio/webm'
-    } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
-      mimeType = 'audio/ogg;codecs=opus'
+    const params: Record<string, any> = {
+      charity_location_id: selectedLocationId.value,
+      range: activeRange.value,
     }
 
-    mediaRecorder = mimeType
-      ? new MediaRecorder(stream, { mimeType })
-      : new MediaRecorder(stream)
-
-    console.log('Using mimeType:', mimeType || mediaRecorder.mimeType)
-
-    chunks = []
-
-    mediaRecorder.ondataavailable = (e: BlobEvent) => {
-      if (e.data.size > 0) chunks.push(e.data)
-    }
-
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(chunks, { type: mimeType || mediaRecorder!.mimeType })
-      console.log('Recorded blob type:', blob.type, 'size:', blob.size)
-
-      if (blob.size === 0) {
-        error.value = 'Recorded audio is empty'
-        status.value = 'Error'
+    if (activeRange.value === 'custom') {
+      if (!from.value || !to.value) {
+        loading.value = false
+        error.value = 'Please choose From and To dates.'
         return
       }
-
-      audioUrl.value = URL.createObjectURL(blob)
-      await sendToStt(blob)
+      params.from = from.value
+      params.to = to.value
     }
 
-    mediaRecorder.start()
-    isRecording.value = true
-    status.value = 'Recording...'
+    const { data } = await $api.get('/api/stats/charity/locations/status', { params })
+
+    totalSuccess.value = Number(data.totals?.success || 0)
+    totalFailed.value = Number(data.totals?.failed || 0)
+
+    successTransactions.value = (data.success_transactions || []) as CharityTransaction[]
+    failedTransactions.value = (data.failed_transactions || []) as CharityTransaction[]
   } catch (e: any) {
     console.error(e)
-    error.value = 'Could not access microphone. Check permissions / HTTPS.'
+    error.value = 'Failed to load location status.'
+  } finally {
+    loading.value = false
   }
 }
 
-const stopRecording = () => {
-  if (!mediaRecorder || mediaRecorder.state === 'inactive') return
-  mediaRecorder.stop()
-  isRecording.value = false
-  status.value = 'Processing audio...'
-}
-
-const playRecording = () => {
-  if (!audioUrl.value) return
-  const audio = new Audio(audioUrl.value)
-  audio.play()
-}
-
-const sendToStt = async (blob: Blob) => {
-  try {
-    const formData = new FormData()
-    formData.append('file', blob, 'audio.webm') // field name "file" as docs
-    formData.append('model', 'gpt-4o-mini-transcribe') 
-    // (or "whisper-1" – both are supported in docs):contentReference[oaicite:1]{index=1}
-
-    const res = await fetch('/api/stt', {
-      method: 'POST',
-      body: formData,
-    })
-
-    if (!res.ok) {
-      const errText = await res.text()
-      throw new Error(errText || 'STT API failed')
-    }
-
-    const data = await res.json()
-    transcript.value = data.text || JSON.stringify(data)
-    status.value = 'Done'
-  } catch (e: any) {
-    console.error(e)
-    error.value = e?.message || 'Error sending audio to STT'
-    status.value = 'Error'
-  }
-}
+onMounted(() => {
+  loadFilters()
+})
 </script>
 
-<template>
-  <div class="min-h-screen flex flex-col items-center justify-center gap-4 p-4">
-    <h1 class="text-2xl font-semibold">Speech to Text (OpenAI)</h1>
 
-    <div class="flex gap-2">
-      <button
-        @click="startRecording"
-        :disabled="isRecording"
-        class="px-4 py-2 rounded bg-green-600 text-white disabled:opacity-50"
-      >
-        🎙 Start
-      </button>
-      <button
-        @click="stopRecording"
-        :disabled="!isRecording"
-        class="px-4 py-2 rounded bg-red-600 text-white disabled:opacity-50"
-      >
-        ⏹ Stop
-      </button>
+<template>
+
+   
+  <div class="dashboard-main-body">
+    <!-- Header -->
+    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
+      <h6 class="fw-semibold mb-0">Status by Location</h6>
+      <ul class="d-flex align-items-center gap-2">
+        <li class="fw-medium">
+          <NuxtLink to="/dashboard" class="d-flex align-items-center gap-1 hover-text-primary">
+            <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg"></iconify-icon>
+            Dashboard
+          </NuxtLink>
+        </li>
+      </ul>
     </div>
 
-    <p class="text-sm text-gray-600">
-      Status: {{ status }}
-    </p>
+    <!-- Filters card -->
+    <div class="row gy-4">
+      <div class="col-lg-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0">Filters</h5>
+          </div>
 
-    <button
-      v-if="audioUrl"
-      @click="playRecording"
-      class="px-3 py-1 rounded border text-sm"
-    >
-      ▶ Play Last Recording
-    </button>
+          <div class="card-body">
+            <!-- Location filters -->
+            <div class="row g-3 mb-3">
+              <div class="col-md-3">
+                <label class="form-label mb-1">Country</label>
+                <select
+                  class="form-select"
+                  v-model.number="selectedCountryId"
+                  :disabled="loadingFilters"
+                  @change="onCountryChange"
+                >
+                  <option :value="null">Select Country</option>
+                  <option
+                    v-for="country in countries"
+                    :key="country.id"
+                    :value="country.id"
+                  >
+                    {{ country.name }}
+                  </option>
+                </select>
+              </div>
 
-    <div class="w-full max-w-xl mt-4">
-      <h2 class="font-semibold mb-2">Transcription:</h2>
-      <div class="border rounded p-2 min-h-[80px] text-sm whitespace-pre-wrap">
-        {{ transcript || 'No transcription yet...' }}
+              <div class="col-md-3">
+                <label class="form-label mb-1">Region</label>
+                <select
+                  class="form-select"
+                  v-model.number="selectedRegionId"
+                  :disabled="!selectedCountryId || loadingFilters"
+                  @change="onRegionChange"
+                >
+                  <option :value="null">Select Region</option>
+                  <option
+                    v-for="region in regionsForCountry"
+                    :key="region.id"
+                    :value="region.id"
+                  >
+                    {{ region.name }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label mb-1">City</label>
+                <select
+                  class="form-select"
+                  v-model.number="selectedCityId"
+                  :disabled="!selectedRegionId || loadingFilters"
+                  @change="onCityChange"
+                >
+                  <option :value="null">Select City</option>
+                  <option
+                    v-for="city in citiesForRegion"
+                    :key="city.id"
+                    :value="city.id"
+                  >
+                    {{ city.name }}
+                  </option>
+                </select>
+              </div>
+
+              <div class="col-md-3">
+                <label class="form-label mb-1">Charity Location</label>
+                <select
+                  class="form-select"
+                  v-model.number="selectedLocationId"
+                  :disabled="!selectedCityId || loadingFilters"
+                >
+                  <option :value="null">Select Location</option>
+                  <option
+                    v-for="loc in locationsForCity"
+                    :key="loc.id"
+                    :value="loc.id"
+                  >
+                    {{ loc.name }}
+                  </option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Date range buttons -->
+            <div class="card-body p-0 pt-3">
+              <div class="d-flex flex-wrap align-items-center gap-3">
+                <button
+                  type="button"
+                  class="btn rounded-pill radius-8 px-20 py-11"
+                  :class="activeRange === '7d' ? 'btn-primary-600' : 'btn-outline-primary-600'"
+                  @click="changeRange('7d')"
+                >
+                  Last 7 Days
+                </button>
+                <button
+                  type="button"
+                  class="btn rounded-pill radius-8 px-20 py-11"
+                  :class="activeRange === '30d' ? 'btn-primary-600' : 'btn-outline-primary-600'"
+                  @click="changeRange('30d')"
+                >
+                  Last 30 Days
+                </button>
+                <button
+                  type="button"
+                  class="btn rounded-pill radius-8 px-20 py-11"
+                  :class="activeRange === '6m' ? 'btn-primary-600' : 'btn-outline-primary-600'"
+                  @click="changeRange('6m')"
+                >
+                  Last 6 Months
+                </button>
+                <button
+                  type="button"
+                  class="btn rounded-pill radius-8 px-20 py-11"
+                  :class="activeRange === 'custom' ? 'btn-primary-600' : 'btn-outline-primary-600'"
+                  @click="changeRange('custom')"
+                >
+                  Custom
+                </button>
+              </div>
+
+              <!-- Custom date range -->
+              <div v-if="activeRange === 'custom'" class="row g-2 mt-3">
+                <div class="col-md-4">
+                  <label class="form-label mb-1">From</label>
+                  <input v-model="from" type="date" class="form-control" />
+                </div>
+                <div class="col-md-4">
+                  <label class="form-label mb-1">To</label>
+                  <input v-model="to" type="date" class="form-control" />
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                  <button
+                    type="button"
+                    class="btn btn-primary-600 w-100"
+                    :disabled="!from || !to || !selectedLocationId || loading"
+                    @click="fetchStatusByLocation"
+                  >
+                    Apply Filter
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Search button for non-custom ranges -->
+            <div class="mt-3">
+              <button
+                type="button"
+                class="btn btn-primary-600"
+                :disabled="!selectedLocationId || loading"
+                @click="fetchStatusByLocation"
+              >
+                Search
+              </button>
+            </div>
+
+            <div v-if="error" class="alert alert-danger mt-3 mb-0">
+              {{ error }}
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <p v-if="error" class="text-red-500 text-sm mt-2">
-      {{ error }}
-    </p>
+    <!-- Totals cards -->
+    <div class="row row-cols-lg-3 row-cols-sm-2 row-cols-1 gy-4 mt-4">
+      <div class="col">
+        <div class="card shadow-none border bg-gradient-start-1 h-100">
+          <div class="card-body p-20">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+              <div>
+                <p class="fw-medium text-primary-light mb-1">
+                  Total Donations (Success)
+                  <span v-if="selectedLocationLabel" class="d-block text-xs text-muted">
+                    {{ selectedLocationLabel }}
+                  </span>
+                </p>
+                <h6 class="mb-0">{{ totalSuccess.toFixed(2) }} OMR</h6>
+              </div>
+              <div class="w-50-px h-50-px bg-cyan rounded-circle d-flex justify-content-center align-items-center">
+                <iconify-icon icon="mdi:hand-heart-outline" class="text-white text-2xl mb-0"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col">
+        <div class="card shadow-none border bg-gradient-start-2 h-100">
+          <div class="card-body p-20">
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+              <div>
+                <p class="fw-medium text-primary-light mb-1">
+                  Total Donations (Failed)
+                  <span v-if="selectedLocationLabel" class="d-block text-xs text-muted">
+                    {{ selectedLocationLabel }}
+                  </span>
+                </p>
+                <h6 class="mb-0">{{ totalFailed.toFixed(2) }} OMR</h6>
+              </div>
+              <div class="w-50-px h-50-px bg-purple rounded-circle d-flex justify-content-center align-items-center">
+                <iconify-icon icon="mdi:alert-circle-outline" class="text-white text-2xl mb-0"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add 3rd card later if you like -->
+    </div>
+
+    <!-- Tables -->
+    <div class="row gy-4 mt-4">
+      <!-- Success table -->
+      <div class="col-xxl-6 col-xl-12">
+        <div class="card h-100">
+          <div class="card-body p-24">
+            <div class="d-flex flex-wrap align-items-center gap-1 justify-content-between mb-16">
+              <h6 class="mb-0">Successful Transactions</h6>
+              <span class="badge bg-success-soft text-success">
+                {{ successTransactions.length }} records
+              </span>
+            </div>
+
+            <div class="table-responsive scroll-sm">
+              <table class="table bordered-table sm-table mb-0">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Bank</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(t, index) in successTransactions"
+                    :key="t.id"
+                  >
+                    <td>{{ index + 1 }}</td>
+                    <td>{{ new Date(t.created_at).toLocaleString() }}</td>
+                    <td>{{ Number(t.total_amount).toFixed(2) }}</td>
+                    <td>{{ t.bank?.name || '-' }}</td>
+                    <td>{{ t.charity_location?.name || '-' }}</td>
+                  </tr>
+                  <tr v-if="!successTransactions.length && !loading">
+                    <td colspan="5" class="text-center text-muted py-3">
+                      No successful transactions for this location & period.
+                    </td>
+                  </tr>
+                  <tr v-if="loading">
+                    <td colspan="5" class="text-center py-3">
+                      Loading...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Failed table -->
+      <div class="col-xxl-6 col-xl-12">
+        <div class="card h-100">
+          <div class="card-body p-24">
+            <div class="d-flex flex-wrap align-items-center gap-1 justify-content-between mb-16">
+              <h6 class="mb-0">Failed Transactions</h6>
+              <span class="badge bg-danger-soft text-danger">
+                {{ failedTransactions.length }} records
+              </span>
+            </div>
+
+            <div class="table-responsive scroll-sm">
+              <table class="table bordered-table sm-table mb-0">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Date</th>
+                    <th>Amount</th>
+                    <th>Bank</th>
+                    <th>Location</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="(t, index) in failedTransactions"
+                    :key="t.id"
+                  >
+                    <td>{{ index + 1 }}</td>
+                    <td>{{ new Date(t.created_at).toLocaleString() }}</td>
+                    <td>{{ Number(t.total_amount).toFixed(2) }}</td>
+                    <td>{{ t.bank?.name || '-' }}</td>
+                    <td>{{ t.charity_location?.name || '-' }}</td>
+                  </tr>
+                  <tr v-if="!failedTransactions.length && !loading">
+                    <td colspan="5" class="text-center text-muted py-3">
+                      No failed transactions for this location & period.
+                    </td>
+                  </tr>
+                  <tr v-if="loading">
+                    <td colspan="5" class="text-center py-3">
+                      Loading...
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+
+ 
+ 

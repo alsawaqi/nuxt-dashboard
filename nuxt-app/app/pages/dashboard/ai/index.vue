@@ -33,6 +33,176 @@ let ttsAudio: HTMLAudioElement | null = null
 
 const { $api } = useNuxtApp()
 
+
+// 🔹 Top devices pie chart state
+const topDevicesLabels = ref<string[]>([])
+const topDevicesSeries = ref<number[]>([])
+const topLocationsLabels = ref<string[]>([])
+const topLocationsSeries = ref<number[]>([])
+const topBanksLabels = ref<string[]>([])
+const topBanksSeries = ref<number[]>([])
+const dailyLabels = ref<string[]>([])
+const dailySeries = ref<number[]>([])
+
+// 🔹 Build labels + series from charity.by_devices
+const buildTopDevicesPie = () => {
+  const charity = searchQuery.value?.charity
+  const byDevices = charity?.by_devices ?? []
+
+  topDevicesLabels.value = byDevices.map((row: any) => {
+    // Prefer model name, fallback to model number, then generic
+    return (
+      row.device?.devicemodel?.name ||
+      row.device?.model_number ||
+      `Device #${row.device_id}`
+    )
+  })
+
+  topDevicesSeries.value = byDevices.map((row: any) =>
+    Number(row.transactions_count ?? 0)
+  )
+}
+
+// 🔹 Apex options for top devices pie
+const topDevicesPieOptions = computed(() => ({
+  chart: {
+    type: 'pie',
+  },
+  labels: topDevicesLabels.value,
+  legend: {
+    position: 'bottom',
+  },
+  dataLabels: {
+    enabled: true,
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => `${val} tx`,
+    },
+  },
+}))
+
+
+
+// 🔹 Build labels + series from charity.by_charity_location
+const buildTopLocationsPie = () => {
+  const charity = searchQuery.value?.charity
+  const byLocations = charity?.by_charity_location ?? []
+
+  topLocationsLabels.value = byLocations.map((row: any) => {
+    return (
+      row.charity_location?.name ||
+      `Location #${row.charity_location_id}`
+    )
+  })
+
+  topLocationsSeries.value = byLocations.map((row: any) =>
+    Number(row.transactions_count ?? 0)
+  )
+}
+
+// 🔹 Apex options for top charity locations pie
+const topLocationsPieOptions = computed(() => ({
+  chart: {
+    type: 'pie',
+  },
+  labels: topLocationsLabels.value,
+  legend: {
+    position: 'bottom',
+  },
+  dataLabels: {
+    enabled: true,
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => `${val} tx`,
+    },
+  },
+}))
+
+
+
+// 🔹 Build labels + series from charity.by_bank
+const buildTopBanksPie = () => {
+  const charity = searchQuery.value?.charity
+  const byBank = charity?.by_bank ?? []
+
+  topBanksLabels.value = byBank.map((row: any) => {
+    // prefer short_name, fallback to name, then generic label
+    return (
+      row.bank?.short_name ||
+      row.bank?.name ||
+      `Bank #${row.bank_transaction_id}`
+    )
+  })
+
+  topBanksSeries.value = byBank.map((row: any) =>
+    Number(row.transactions_count ?? 0)
+  )
+}
+
+// 🔹 Apex options for top banks pie
+const topBanksPieOptions = computed(() => ({
+  chart: {
+    type: 'pie',
+  },
+  labels: topBanksLabels.value,
+  legend: {
+    position: 'bottom',
+  },
+  dataLabels: {
+    enabled: true,
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => `${val} tx`,
+    },
+  },
+}))
+
+
+
+// Build from charity.daily_totals
+const buildDailyLineSeries = () => {
+  const daily = searchQuery.value?.charity?.daily_totals ?? []
+
+  dailyLabels.value = daily.map((row: any) => row.date)
+  dailySeries.value = daily.map((row: any) =>
+    Number(row.total_amount ?? 0),
+  )
+}
+
+// Apex options for the line chart
+const dailyLineOptions = computed(() => ({
+  chart: {
+    type: 'line',
+    toolbar: { show: false },
+  },
+  stroke: {
+    curve: 'smooth',
+    width: 3,
+  },
+  dataLabels: {
+    enabled: false,
+  },
+  xaxis: {
+    categories: dailyLabels.value,
+    labels: {
+      rotate: 0,
+    },
+  },
+  yaxis: {
+    labels: {
+      formatter: (val: number) => val.toFixed(3),
+    },
+  },
+  tooltip: {
+    y: {
+      formatter: (val: number) => `${val.toFixed(3)} OMR`,
+    },
+  },
+}))
+
 // we only show the mic button if we have data
 const hasData = computed(() => {
   if (!searchQuery.value) return false
@@ -82,7 +252,12 @@ const search = async (): Promise<void> => {
       },
     })
     // store the full response so AI can see everything
-    searchQuery.value = data
+    searchQuery.value = data;
+
+    buildTopDevicesPie();
+    buildTopLocationsPie();
+    buildTopBanksPie();
+    buildDailyLineSeries();
   } catch (e: any) {
     console.log(e)
   } finally {
@@ -307,16 +482,16 @@ const stopTtsPlayback = () => {
 }
 </script>
 
- <template>
+<template>
   <div class="dashboard-main-body">
     <!-- Header -->
     <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
-      <h6 class="fw-semibold mb-0">Dashboard</h6>
+      <h6 class="fw-semibold mb-0">Ai Analysis</h6>
       <ul class="d-flex align-items-center gap-2">
         <li class="fw-medium">
           <a href="index.php" class="d-flex align-items-center gap-1 hover-text-primary">
             <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg"></iconify-icon>
-            Dashboard
+           Ai Analysis
           </a>
         </li>
         <li>-</li>
@@ -331,12 +506,8 @@ const stopTtsPlayback = () => {
           <div class="card-header d-flex justify-content-between align-items-center">
             <h5 class="card-title mb-0">AI Status Analysis</h5>
             <!-- Voice button appears only when we have data -->
-            <button
-              v-if="hasData"
-              type="button"
-              class="btn btn-primary-600 d-flex align-items-center gap-2"
-              @click="openVoiceModal"
-            >
+            <button v-if="hasData" type="button" class="btn btn-primary-600 d-flex align-items-center gap-2"
+              @click="openVoiceModal">
               <iconify-icon icon="solar:microphone-bold-duotone" class="icon"></iconify-icon>
               Analyze with AI
             </button>
@@ -349,12 +520,7 @@ const stopTtsPlayback = () => {
                   <span class="icon">
                     <iconify-icon icon="solar:calendar-date-bold-duotone"></iconify-icon>
                   </span>
-                  <input
-                    type="date"
-                    class="form-control"
-                    v-model="from"
-                    required
-                  />
+                  <input type="date" class="form-control" v-model="from" required />
                 </div>
               </div>
               <div class="col-md-6">
@@ -363,12 +529,7 @@ const stopTtsPlayback = () => {
                   <span class="icon">
                     <iconify-icon icon="solar:calendar-date-bold-duotone"></iconify-icon>
                   </span>
-                  <input
-                    type="date"
-                    class="form-control"
-                    v-model="to"
-                    required
-                  />
+                  <input type="date" class="form-control" v-model="to" required />
                 </div>
               </div>
               <div class="col-12">
@@ -383,86 +544,322 @@ const stopTtsPlayback = () => {
       </div>
     </div>
 
+    <div class="dashboard-main-body" v-if="hasData">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
+        <h6 class="fw-semibold mb-0">Result</h6>
+
+      </div>
+
+      <div class="row row-cols-xxxl-5 row-cols-lg-3 row-cols-sm-2 row-cols-1 gy-4">
+        <!-- Total Charities -->
+        <div class="col">
+          <div class="card shadow-none border bg-gradient-start-1 h-100">
+            <div class="card-body p-20">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                  <p class="fw-medium text-primary-light mb-1">Donations</p>
+                  <h6 class="mb-0">{{ searchQuery.charity?.summary?.total_success_count }} </h6>
+                </div>
+                <div class="w-50-px h-50-px bg-cyan rounded-circle d-flex justify-content-center align-items-center">
+                  <!-- Hand + heart for charities -->
+                  <iconify-icon icon="mdi:hand-heart-outline" class="text-white text-2xl mb-0"></iconify-icon>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+
+
+        <!-- Total Charities Amount -->
+        <div class="col">
+          <div class="card shadow-none border bg-gradient-start-2 h-100">
+            <div class="card-body p-20">
+              <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+                <div>
+                  <p class="fw-medium text-primary-light mb-1">Total Amount</p>
+                  <h6 class="mb-0">{{ searchQuery.charity?.summary?.total_success_amount }} OMR</h6>
+                </div>
+                <div class="w-50-px h-50-px bg-purple rounded-circle d-flex justify-content-center align-items-center">
+                  <!-- Coin in hand = money donated -->
+                  <iconify-icon icon="mdi:hand-coin-outline" class="text-white text-2xl mb-0"></iconify-icon>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+
+
+      </div>
+
+
+      <div class="row gy-4 mt-1">
+        <div class="col-xxl-6 col-xl-12">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex flex-wrap align-items-center justify-content-between">
+                <h6 class="text-lg mb-0">Charity Statistic</h6>
+
+
+              </div>
+
+              <div class="d-flex flex-wrap align-items-center gap-2 mt-8">
+
+              </div>
+
+              <div class="pt-28 apexcharts-tooltip-style-1">
+                <ClientOnly>
+                  <apexchart v-if="dailySeries.length > 0" type="line" height="320" :options="dailyLineOptions"
+                    :series="[{ name: 'Total Amount (Success)', data: dailySeries }]" />
+                  <div v-else class="text-muted text-sm">
+                    No charity data for this date range.
+                  </div>
+                </ClientOnly>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xxl-3 col-xl-12">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+                <h6 class="mb-2 fw-bold text-lg mb-0">Top Locations</h6>
+
+              </div>
+
+              <div class="mt-32">
+
+                <ClientOnly>
+                  <apexchart v-if="topLocationsSeries.length > 0" type="pie" height="260"
+                    :options="topLocationsPieOptions" :series="topLocationsSeries" />
+                  <div v-else class="text-muted text-sm">
+                    No charity location transactions found in this date range.
+                  </div>
+                </ClientOnly>
+
+
+
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+
+        <div class="col-xxl-3 col-xl-12">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+                <h6 class="mb-2 fw-bold text-lg mb-0">Top Devices</h6>
+                <a href="javascript:void(0)"
+                  class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
+                  View All
+                  <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
+                </a>
+              </div>
+
+              <div class="mt-32">
+
+                <ClientOnly>
+                  <apexchart v-if="topDevicesSeries.length > 0" type="pie" height="260" :options="topDevicesPieOptions"
+                    :series="topDevicesSeries" />
+                  <div v-else class="text-muted text-sm">
+                    No device transactions found in this date range.
+                  </div>
+                </ClientOnly>
+
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+
+
+        <div class="col-xxl-9 col-xl-12">
+          <div class="card h-100">
+            <div class="card-body p-24">
+
+              <div class="d-flex flex-wrap align-items-center gap-1 justify-content-between mb-16">
+                <ul class="nav border-gradient-tab nav-pills mb-0" id="pills-tab" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link d-flex align-items-center active" id="pills-to-do-list-tab"
+                      data-bs-toggle="pill" data-bs-target="#pills-to-do-list" type="button" role="tab"
+                      aria-controls="pills-to-do-list" aria-selected="true">
+                      Latest Charities
+                      <span
+                        class="text-sm fw-semibold py-6 px-12 bg-neutral-500 rounded-pill text-white line-height-1 ms-12 notification-alert">
+                      </span>
+                    </button>
+                  </li>
+
+                </ul>
+                <a href="javascript:void(0)"
+                  class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
+                  View All
+                  <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
+                </a>
+              </div>
+
+              <div class="tab-content" id="pills-tabContent">
+                <div class="tab-pane fade show active" id="pills-to-do-list" role="tabpanel"
+                  aria-labelledby="pills-to-do-list-tab" tabindex="0">
+                  <div class="table-responsive scroll-sm">
+
+
+                    <table class="table bordered-table sm-table mb-0">
+                      <thead>
+                        <tr>
+                          <th scope="col">#</th>
+                          <th scope="col">Device Name</th>
+                          <th scope="col">Bank</th>
+                          <th scope="col">Amount</th>
+                          <th scope="col" class="text-center">Locations</th>
+                          <th scope="col">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+
+                        <tr v-for="(transaction, index) in searchQuery.charity?.transactions" :key="transaction.id">
+                          <td>
+                            {{ index + 1 }}
+                          </td>
+                          <td>{{ transaction.device?.devicemodel?.name }}</td>
+                          <td>{{ transaction.bank?.name || 'N/A' }}</td>
+                          <td>{{ transaction.total_amount }} OMR</td>
+                          <td class="text-center">
+                            {{ transaction.charity_location?.name || 'N/A' }}
+                          </td>
+                          <td>{{ new Date(transaction.created_at).toLocaleDateString() }}</td>
+                        </tr>
+
+
+
+
+
+
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col-xxl-3 col-xl-12">
+          <div class="card h-100">
+            <div class="card-body">
+              <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+                <h6 class="mb-2 fw-bold text-lg mb-0">Top Banks</h6>
+                <a href="javascript:void(0)"
+                  class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
+                  View All
+                  <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
+                </a>
+              </div>
+
+              <div class="mt-32">
+
+                <div class="d-flex align-items-center justify-content-between gap-3 mb-24">
+
+                  <ClientOnly>
+                    <apexchart v-if="topBanksSeries.length > 0" type="pie" height="260" :options="topBanksPieOptions"
+                      :series="topBanksSeries" />
+                    <div v-else class="text-muted text-sm">
+                      No bank transactions found in this date range.
+                    </div>
+                  </ClientOnly>
+
+
+                </div>
+
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+
+
     <!-- Error display (optional) -->
     <div v-if="error" class="alert alert-danger mt-3">
       {{ error }}
     </div>
 
     <!-- Voice Modal Overlay -->
-    <div
-      v-if="showVoiceModal"
-      class="voice-modal-overlay"
-      @click.self="closeVoiceModal"
-    >
+    <div v-if="showVoiceModal" class="voice-modal-overlay" @click.self="closeVoiceModal">
       <div class="voice-modal-card">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h5 class="mb-0">AI Voice Assistant</h5>
-          <button type="button" class="btn btn-sm btn-light" @click="closeVoiceModal">
+        <!-- Header -->
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <div>
+            <div class="d-flex align-items-center gap-2">
+              <span class="badge rounded-pill voice-pill-status">
+                <span class="voice-pill-dot"></span>
+                {{ isRecording ? 'Listening' : isAnalyzing ? 'Analyzing' : isPlayingTts ? 'Speaking' : 'Ready' }}
+              </span>
+            </div>
+            <h5 class="mb-0 mt-2">AI Voice Assistant</h5>
+            <p class="text-muted small mb-0">
+              Ask a question about this dashboard. I’ll analyze the data and speak back the answer.
+            </p>
+          </div>
+
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle voice-close-btn"
+            @click="closeVoiceModal">
             ✕
           </button>
         </div>
 
-        <p class="text-muted small mb-3">
-          Press and hold the mic to ask a question about this dashboard.  
-          Release to let AI analyze and speak back the answer.
-        </p>
-
         <!-- Wave + Mic Button -->
-        <div class="voice-center">
+        <div class="voice-center my-3">
           <div class="wave-container">
-            <div class="wave-circle" :class="{ 'wave-active': isRecording }"></div>
-            <button
-              type="button"
-              class="voice-mic-btn"
-              :class="{ 'voice-mic-btn-recording': isRecording }"
-              @click="startOrStopRecording"
-            >
-              <iconify-icon
-                :icon="isRecording ? 'solar:stop-bold-duotone' : 'solar:microphone-bold-duotone'"
-                class="voice-mic-icon"
-              ></iconify-icon>
+            <span class="wave-ring ring-1" :class="{ 'wave-ring-active': isRecording }"></span>
+            <span class="wave-ring ring-2" :class="{ 'wave-ring-active': isRecording }"></span>
+            <span class="wave-ring ring-3" :class="{ 'wave-ring-active': isRecording }"></span>
+
+            <button type="button" class="voice-mic-btn" :class="{ 'voice-mic-btn-recording': isRecording }"
+              @click="startOrStopRecording">
+              <iconify-icon :icon="isRecording ? 'solar:stop-bold-duotone' : 'solar:microphone-bold-duotone'"
+                class="voice-mic-icon"></iconify-icon>
             </button>
           </div>
+
           <div class="mt-3 text-center">
-            <div class="fw-semibold">{{ stageLabel }}</div>
+            <div class="fw-semibold text-dark">{{ stageLabel }}</div>
             <div class="text-muted small">{{ status }}</div>
           </div>
         </div>
 
         <!-- Progress bar for STT + Analyze + TTS -->
-        <div class="mt-4">
+        <div class="mt-3">
           <div class="d-flex justify-content-between mb-1">
             <span class="small text-muted">Analysis progress</span>
             <span class="small text-muted">{{ progress }}%</span>
           </div>
-          <div class="progress voice-progress">
-            <div
-              class="progress-bar"
-              role="progressbar"
-              :style="{ width: progress + '%' }"
-              :aria-valuenow="progress"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            ></div>
+          <div class="voice-progress-track">
+            <div class="voice-progress-bar" :style="{ width: progress + '%' }"></div>
           </div>
         </div>
 
-        <!-- Controls: stop answer playback -->
+        <!-- Bottom row: hint + stop button -->
         <div class="mt-3 d-flex justify-content-between align-items-center">
           <span class="small text-muted">
-            {{ isPlayingTts ? 'AI is speaking...' : 'Waiting for your question...' }}
+            {{ isPlayingTts ? 'AI is speaking…' : 'Tap the mic to start and stop recording.' }}
           </span>
-          <button
-            v-if="isPlayingTts"
-            type="button"
-            class="btn btn-outline-danger btn-sm"
-            @click="stopTtsPlayback"
-          >
+
+          <button v-if="isPlayingTts" type="button" class="btn btn-outline-danger btn-sm" @click="stopTtsPlayback">
             Stop Voice
           </button>
         </div>
       </div>
     </div>
+
   </div>
 </template>
 
@@ -471,8 +868,9 @@ const stopTtsPlayback = () => {
 .voice-modal-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(15, 23, 42, 0.65); /* dark, semi-transparent */
-  backdrop-filter: blur(6px);
+  background: rgba(15, 23, 42, 0.25);
+  /* softer */
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -480,16 +878,75 @@ const stopTtsPlayback = () => {
 }
 
 .voice-modal-card {
-  background: #0f172a; /* slate-900 style */
-  color: #e5e7eb;
-  border-radius: 16px;
-  padding: 20px 24px;
+  background: #ffffff;
+  color: #0f172a;
+  border-radius: 20px;
+  padding: 20px 24px 18px;
   width: 100%;
   max-width: 420px;
-  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(148, 163, 184, 0.4);
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.18),
+    0 0 0 1px rgba(226, 232, 240, 0.9);
+  position: relative;
+  overflow: hidden;
 }
 
+/* subtle top gradient strip */
+.voice-modal-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #22c55e, #0ea5e9);
+  opacity: 0.85;
+}
+
+/* Status pill in header */
+.voice-pill-status {
+  background: rgba(34, 197, 94, 0.08);
+  color: #166534;
+  font-size: 11px;
+  padding: 4px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(34, 197, 94, 0.2);
+}
+
+.voice-pill-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  animation: pulse-dot 1.4s infinite;
+}
+
+@keyframes pulse-dot {
+  0% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+  }
+}
+
+.voice-close-btn {
+  border-radius: 50% !important;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Center & wave */
 .voice-center {
   display: flex;
   flex-direction: column;
@@ -499,89 +956,131 @@ const stopTtsPlayback = () => {
 
 .wave-container {
   position: relative;
-  width: 160px;
-  height: 160px;
+  width: 170px;
+  height: 170px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Wave animation around mic button */
-.wave-circle {
+/* concentric animated rings */
+.wave-ring {
   position: absolute;
-  width: 120px;
-  height: 120px;
   border-radius: 999px;
-  border: 2px solid rgba(96, 165, 250, 0.4);
+  border: 2px solid rgba(56, 189, 248, 0.4);
   opacity: 0;
   transform: scale(0.8);
 }
 
-.wave-active {
-  animation: pulse-wave 1.4s infinite;
+.ring-1 {
+  width: 120px;
+  height: 120px;
 }
 
-@keyframes pulse-wave {
+.ring-2 {
+  width: 145px;
+  height: 145px;
+}
+
+.ring-3 {
+  width: 170px;
+  height: 170px;
+}
+
+.wave-ring-active {
+  animation: ring-pulse 1.6s infinite;
+}
+
+.ring-2.wave-ring-active {
+  animation-delay: 0.25s;
+}
+
+.ring-3.wave-ring-active {
+  animation-delay: 0.5s;
+}
+
+@keyframes ring-pulse {
   0% {
-    opacity: 0.2;
-    transform: scale(0.9);
+    opacity: 0.1;
+    transform: scale(0.85);
   }
-  50% {
-    opacity: 0.6;
-    transform: scale(1.1);
+
+  40% {
+    opacity: 0.5;
+    transform: scale(1);
   }
+
   100% {
     opacity: 0;
-    transform: scale(1.25);
+    transform: scale(1.15);
   }
 }
 
+/* mic button */
 .voice-mic-btn {
   position: relative;
-  width: 80px;
-  height: 80px;
+  width: 84px;
+  height: 84px;
   border-radius: 999px;
   border: none;
-  background: linear-gradient(135deg, #22c55e, #0ea5e9);
+  background: radial-gradient(circle at 30% 20%, #a5f3fc, #0ea5e9);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   box-shadow:
-    0 10px 25px rgba(16, 185, 129, 0.5),
-    0 0 0 1px rgba(15, 23, 42, 0.8);
+    0 12px 26px rgba(15, 118, 110, 0.35),
+    0 0 0 1px rgba(226, 232, 240, 0.9);
   transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
+    transform 0.12s ease,
+    box-shadow 0.12s ease,
     background 0.15s ease;
 }
 
 .voice-mic-btn:hover {
   transform: translateY(-1px);
   box-shadow:
-    0 14px 30px rgba(16, 185, 129, 0.7),
-    0 0 0 1px rgba(15, 23, 42, 0.9);
+    0 16px 32px rgba(14, 116, 144, 0.4),
+    0 0 0 1px rgba(226, 232, 240, 1);
 }
 
 .voice-mic-btn-recording {
-  background: linear-gradient(135deg, #f97316, #ef4444);
+  background: radial-gradient(circle at 30% 20%, #fed7aa, #f97316);
+  box-shadow:
+    0 16px 32px rgba(234, 88, 12, 0.45),
+    0 0 0 1px rgba(254, 243, 199, 0.9);
 }
 
 .voice-mic-icon {
   font-size: 32px;
-  color: white;
+  color: #ffffff;
 }
 
-.voice-progress {
+/* progress */
+.voice-progress-track {
+  position: relative;
+  width: 100%;
   height: 8px;
   border-radius: 999px;
-  background-color: rgba(148, 163, 184, 0.25);
+  background: #e5e7eb;
+  overflow: hidden;
 }
 
-.voice-progress .progress-bar {
-  background: linear-gradient(90deg, #22c55e, #0ea5e9);
+.voice-progress-bar {
+  height: 100%;
   border-radius: 999px;
+  background: linear-gradient(90deg, #22c55e, #0ea5e9);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 0% 50%;
+  }
+
+  100% {
+    background-position: -200% 50%;
+  }
 }
 </style>
-
-

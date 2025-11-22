@@ -10,6 +10,11 @@ export default defineNuxtConfig({
   typescript: {
     strict: true,
     typeCheck: true,
+    tsConfig: {
+      compilerOptions: {
+        types: ['google.maps'],
+      },
+    },
   },
 
   components: true,
