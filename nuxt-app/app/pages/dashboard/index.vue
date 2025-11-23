@@ -642,7 +642,7 @@ onMounted(async () => {
           <div class="card-body p-20">
             <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
               <div>
-                <p class="fw-medium text-primary-light mb-1">Total Amount</p>
+                <p class="fw-medium text-primary-light mb-1">Total</p>
                 <h6 class="mb-0">{{ datas.total_amount }} OMR</h6>
               </div>
               <div class="w-50-px h-50-px bg-purple rounded-circle d-flex justify-content-center align-items-center">
