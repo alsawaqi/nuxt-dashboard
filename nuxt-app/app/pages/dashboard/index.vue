@@ -487,7 +487,7 @@ const loadTransactions = async (): Promise<void> => {
 
 }
 
- const loadTopBanks = async () => {
+const loadTopBanks = async () => {
   loadingTopBanks.value = true
   errorTopBanks.value = null
 
@@ -550,7 +550,7 @@ const initHeatmap = async () => {
     }
 
     const first = points[0]
-    
+
     if (!first) {
       heatmapError.value = 'No valid payment data available.'
       return
@@ -588,8 +588,8 @@ onMounted(async () => {
   await loadData()
   await loadTotals()
   await loadTransactions()
-  await initHeatmap() 
- 
+  await initHeatmap()
+
   await loadTopDevices()
   await loadTopLocations()
   await loadTopBanks()
@@ -701,7 +701,7 @@ onMounted(async () => {
               <h6 class="text-lg mb-0">Charity Statistic</h6>
 
               <!-- filter select -->
-           
+
             </div>
 
             <div class="d-flex flex-wrap align-items-center gap-2 mt-8">
@@ -786,7 +786,7 @@ onMounted(async () => {
           <div class="card-body">
             <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
               <h6 class="mb-2 fw-bold text-lg mb-0">Top Devices</h6>
-             
+
             </div>
 
             <div class="mt-32">
@@ -838,41 +838,32 @@ onMounted(async () => {
 
 
 
- <div class="card radius-16 mt-24">
-  <div class="card-header">
-    <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-      <h6 class="mb-2 fw-bold text-lg mb-0">Charity Heatmap</h6>
-    </div>
-  </div>
-
-  <div class="card-body">
-    <ClientOnly>
-      <div class="position-relative">
-        <!-- The map container: ALWAYS rendered -->
-        <div
-          ref="heatmapContainer"
-          class="heatmap-map-wrapper"
-        ></div>
-
-        <!-- Loading overlay -->
-        <div
-          v-if="heatmapLoading"
-          class="heatmap-overlay d-flex align-items-center justify-content-center"
-        >
-          <span class="text-muted">Loading payment heatmap...</span>
+      <div class="card radius-16 mt-24">
+        <div class="card-header">
+          <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
+            <h6 class="mb-2 fw-bold text-lg mb-0">Charity Heatmap</h6>
+          </div>
         </div>
 
-        <!-- Error message (below the map) -->
-        <div
-          v-if="heatmapError"
-          class="alert alert-warning mt-2 mb-0"
-        >
-          {{ heatmapError }}
+        <div class="card-body">
+          <ClientOnly>
+            <div class="position-relative">
+              <!-- The map container: ALWAYS rendered -->
+              <div ref="heatmapContainer" class="heatmap-map-wrapper"></div>
+
+              <!-- Loading overlay -->
+              <div v-if="heatmapLoading" class="heatmap-overlay d-flex align-items-center justify-content-center">
+                <span class="text-muted">Loading payment heatmap...</span>
+              </div>
+
+              <!-- Error message (below the map) -->
+              <div v-if="heatmapError" class="alert alert-warning mt-2 mb-0">
+                {{ heatmapError }}
+              </div>
+            </div>
+          </ClientOnly>
         </div>
       </div>
-    </ClientOnly>
-  </div>
-</div>
 
 
 
@@ -897,10 +888,7 @@ onMounted(async () => {
                 </li>
 
               </ul>
-              <a href="javascript:void(0)" class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
-                View All
-                <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
-              </a>
+             
             </div>
 
             <div class="tab-content" id="pills-tabContent">
@@ -935,18 +923,18 @@ onMounted(async () => {
                         <td class="text-center">
                           {{ transaction.charity_location?.name }}
                         </td>
-                        <<td>
-  {{
-    new Date(transaction.created_at).toLocaleString('en-GB', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-    })
-  }}
-</td>
+                        <td>
+                          {{
+                            new Date(transaction.created_at).toLocaleString('en-GB', {
+                              year: 'numeric',
+                              month: '2-digit',
+                              day: '2-digit',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit',
+                          })
+                          }}
+                        </td>
                       </tr>
 
                     </tbody>
@@ -963,65 +951,54 @@ onMounted(async () => {
           <div class="card-body">
             <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
               <h6 class="mb-2 fw-bold text-lg mb-0">Top Banks (Working Progress)</h6>
-              <a href="javascript:void(0)" class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
-                View All
-                <iconify-icon icon="solar:alt-arrow-right-linear" class="icon"></iconify-icon>
-              </a>
+             
             </div>
 
             <div class="mt-32">
 
-             <div class="mt-32">
-  <div v-if="loadingTopBanks" class="text-center py-4">
-    Loading top banks...
-  </div>
+              <div class="mt-32">
+                <div v-if="loadingTopBanks" class="text-center py-4">
+                  Loading top banks...
+                </div>
 
-  <div v-else-if="errorTopBanks" class="text-danger py-4">
-    {{ errorTopBanks }}
-  </div>
+                <div v-else-if="errorTopBanks" class="text-danger py-4">
+                  {{ errorTopBanks }}
+                </div>
 
-  <ClientOnly v-else>
-    <!-- Donut chart -->
-    <div class="d-flex justify-content-center mb-3">
-      <apexchart
-        type="donut"
-        height="260"
-        :options="chartOptionsPieBanks"
-        :series="seriesPieBanks"
-      />
-    </div>
+                <ClientOnly v-else>
+                  <!-- Donut chart -->
+                  <div class="d-flex justify-content-center mb-3">
+                    <apexchart type="donut" height="260" :options="chartOptionsPieBanks" :series="seriesPieBanks" />
+                  </div>
 
-    <!-- Legend table -->
-    <div class="mt-3">
-      <table class="table table-sm align-middle mb-0">
-        <thead>
-          <tr>
-            <th>Bank</th>
-            <th class="text-end">Value</th>
-            <th class="text-end">%</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in pieRowsBanks" :key="row.label">
-            <td>
-              <span
-                class="me-2 rounded-circle d-inline-block"
-                :style="{
-                  width: '10px',
-                  height: '10px',
-                  backgroundColor: row.color,
-                }"
-              ></span>
-              {{ row.label }}
-            </td>
-            <td class="text-end">{{ row.value.toFixed(2) }}</td>
-            <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </ClientOnly>
-</div>
+                  <!-- Legend table -->
+                  <div class="mt-3">
+                    <table class="table table-sm align-middle mb-0">
+                      <thead>
+                        <tr>
+                          <th>Bank</th>
+                          <th class="text-end">Value</th>
+                          <th class="text-end">%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="row in pieRowsBanks" :key="row.label">
+                          <td>
+                            <span class="me-2 rounded-circle d-inline-block" :style="{
+                              width: '10px',
+                              height: '10px',
+                              backgroundColor: row.color,
+                            }"></span>
+                            {{ row.label }}
+                          </td>
+                          <td class="text-end">{{ row.value.toFixed(2) }}</td>
+                          <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </ClientOnly>
+              </div>
 
 
 
@@ -1041,7 +1018,8 @@ onMounted(async () => {
 <style scoped>
 .heatmap-map-wrapper {
   width: 100%;
-  height: 380px; /* adjust as needed */
+  height: 380px;
+  /* adjust as needed */
   border-radius: 16px;
   overflow: hidden;
   position: relative;
@@ -1055,5 +1033,4 @@ onMounted(async () => {
   z-index: 10;
   font-size: 0.9rem;
 }
-
 </style>
