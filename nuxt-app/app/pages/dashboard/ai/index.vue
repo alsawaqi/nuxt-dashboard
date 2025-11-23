@@ -172,6 +172,20 @@ const buildDailyLineSeries = () => {
   )
 }
 
+
+const showAnswerModal = ref(false)
+
+const hasAnswer = computed(() => !!answerText.value && answerText.value.trim().length > 0)
+
+const openAnswerModal = () => {
+  if (!hasAnswer.value) return
+  showAnswerModal.value = true
+}
+
+const closeAnswerModal = () => {
+  showAnswerModal.value = false
+}
+
 // Apex options for the line chart
 const dailyLineOptions = computed(() => ({
   chart: {
@@ -504,14 +518,33 @@ const stopTtsPlayback = () => {
       <div class="col-lg-12">
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="card-title mb-0">AI Status Analysis</h5>
-            <!-- Voice button appears only when we have data -->
-            <button v-if="hasData" type="button" class="btn btn-primary-600 d-flex align-items-center gap-2"
-              @click="openVoiceModal">
-              <iconify-icon icon="solar:microphone-bold-duotone" class="icon"></iconify-icon>
-              Analyze with AI
-            </button>
-          </div>
+  <h5 class="card-title mb-0">AI Status Analysis</h5>
+
+  <div class="d-flex gap-2">
+    <!-- Show AI Answer button only if we already have an answer -->
+    <button
+      v-if="hasAnswer"
+      type="button"
+      class="btn btn-outline-secondary d-flex align-items-center gap-2"
+      @click="openAnswerModal"
+    >
+      <iconify-icon icon="solar:chat-round-dots-bold-duotone" class="icon"></iconify-icon>
+      View AI Insight
+    </button>
+
+    <!-- Voice button appears only when we have data -->
+    <button
+      v-if="hasData"
+      type="button"
+      class="btn btn-primary-600 d-flex align-items-center gap-2"
+      @click="openVoiceModal"
+    >
+      <iconify-icon icon="solar:microphone-bold-duotone" class="icon"></iconify-icon>
+      Analyze with AI
+    </button>
+  </div>
+</div>
+
           <div class="card-body">
             <form class="row gy-3 needs-validation" novalidate @submit.prevent="search">
               <div class="col-md-6">
@@ -861,6 +894,46 @@ const stopTtsPlayback = () => {
     </div>
 
   </div>
+
+      <!-- AI Answer Modal -->
+    <div
+      v-if="showAnswerModal"
+      class="answer-modal-overlay"
+      @click.self="closeAnswerModal"
+    >
+      <div class="answer-modal-card">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div>
+            <h6 class="mb-1">AI Insight</h6>
+            <p class="text-muted small mb-1">
+              Explanation generated from the current dashboard data.
+            </p>
+          </div>
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary rounded-circle"
+            @click="closeAnswerModal"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="mb-3">
+          <p class="text-muted small mb-1">Your question</p>
+          <div class="answer-question-pill">
+            {{ transcript || 'No question text available.' }}
+          </div>
+        </div>
+
+        <div>
+          <p class="text-muted small mb-1">AI explanation</p>
+          <div class="answer-text-body">
+            {{ answerText || 'No answer received yet.' }}
+          </div>
+        </div>
+      </div>
+    </div>
+
 </template>
 
 
@@ -1083,4 +1156,70 @@ const stopTtsPlayback = () => {
     background-position: -200% 50%;
   }
 }
+
+
+/* --- AI Answer Modal --- */
+.answer-modal-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 16px;
+  background: transparent; /* no dark overlay, just a floating card */
+  pointer-events: none;     /* so clicks pass through except on card */
+  z-index: 10000;
+}
+
+.answer-modal-card {
+  pointer-events: auto;
+  width: 100%;
+  max-width: 520px;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 16px 18px 14px;
+  box-shadow:
+    0 18px 45px rgba(15, 23, 42, 0.18),
+    0 0 0 1px rgba(226, 232, 240, 0.9);
+  border-top: 3px solid #0ea5e9;
+  animation: slide-up-fade 0.22s ease-out;
+}
+
+/* slide up animation */
+@keyframes slide-up-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.answer-question-pill {
+  border-radius: 999px;
+  border: 1px solid #e5e7eb;
+  padding: 6px 10px;
+  font-size: 12px;
+  background: #f9fafb;
+  color: #374151;
+  max-height: 56px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.answer-text-body {
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  background: linear-gradient(180deg, #f9fafb, #f3f4f6);
+  font-size: 13px;
+  line-height: 1.5;
+  color: #111827;
+}
+
 </style>
