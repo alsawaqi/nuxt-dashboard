@@ -1,4 +1,4 @@
-<script setup lang="ts">
+ <script setup lang="ts">
 import { ref, computed } from 'vue'
 
 definePageMeta({
@@ -20,6 +20,10 @@ const to = ref<string | null>(null)
 const loading = ref<boolean>(false)
 const searchQuery = ref<any>({})
 
+// 🔹 multi-turn conversation history (frontend only)
+type Turn = { user: string; assistant: string }
+const conversationHistory = ref<Turn[]>([])
+
 // voice modal / flow state
 const showVoiceModal = ref(false)
 const isAnalyzing = ref(false)
@@ -32,7 +36,6 @@ let chunks: BlobPart[] = []
 let ttsAudio: HTMLAudioElement | null = null
 
 const { $api } = useNuxtApp()
-
 
 // 🔹 Top devices pie chart state
 const topDevicesLabels = ref<string[]>([])
@@ -82,8 +85,6 @@ const topDevicesPieOptions = computed(() => ({
   },
 }))
 
-
-
 // 🔹 Build labels + series from charity.by_charity_location
 const buildTopLocationsPie = () => {
   const charity = searchQuery.value?.charity
@@ -119,8 +120,6 @@ const topLocationsPieOptions = computed(() => ({
     },
   },
 }))
-
-
 
 // 🔹 Build labels + series from charity.by_bank
 const buildTopBanksPie = () => {
@@ -160,8 +159,6 @@ const topBanksPieOptions = computed(() => ({
   },
 }))
 
-
-
 // Build from charity.daily_totals
 const buildDailyLineSeries = () => {
   const daily = searchQuery.value?.charity?.daily_totals ?? []
@@ -172,10 +169,11 @@ const buildDailyLineSeries = () => {
   )
 }
 
-
 const showAnswerModal = ref(false)
 
-const hasAnswer = computed(() => !!answerText.value && answerText.value.trim().length > 0)
+const hasAnswer = computed(
+  () => !!answerText.value && answerText.value.trim().length > 0
+)
 
 const openAnswerModal = () => {
   if (!hasAnswer.value) return
@@ -184,6 +182,13 @@ const openAnswerModal = () => {
 
 const closeAnswerModal = () => {
   showAnswerModal.value = false
+}
+
+// 🔹 Reset conversation context (for new filters / new topic)
+const resetConversation = () => {
+  conversationHistory.value = []
+  transcript.value = ''
+  answerText.value = ''
 }
 
 // Apex options for the line chart
@@ -231,6 +236,7 @@ const openVoiceModal = () => {
   progress.value = 0
   stageLabel.value = 'Ready'
   status.value = 'Ready'
+  // NOTE: conversationHistory is NOT reset here -> multi-turn context kept
   showVoiceModal.value = true
 }
 
@@ -266,12 +272,15 @@ const search = async (): Promise<void> => {
       },
     })
     // store the full response so AI can see everything
-    searchQuery.value = data;
+    searchQuery.value = data
 
-    buildTopDevicesPie();
-    buildTopLocationsPie();
-    buildTopBanksPie();
-    buildDailyLineSeries();
+    buildTopDevicesPie()
+    buildTopLocationsPie()
+    buildTopBanksPie()
+    buildDailyLineSeries()
+
+    // New data range -> reset AI context
+    resetConversation()
   } catch (e: any) {
     console.log(e)
   } finally {
@@ -365,7 +374,7 @@ const stopRecording = () => {
   progress.value = 10
 }
 
-// ---- Full STT + Analyze + TTS chain ----
+// ---- Full STT + Analyze + TTS chain (multi-turn) ----
 const fullVoiceAnalyzeFlow = async (blob: Blob) => {
   try {
     if (!hasData.value) {
@@ -409,7 +418,7 @@ const fullVoiceAnalyzeFlow = async (blob: Blob) => {
       return
     }
 
-    // 2) Analyze: send JSON + question to /api/analyze
+    // 2) Analyze: send JSON + question + last turns to /api/analyze
     status.value = 'Analyzing dashboard data...'
     stageLabel.value = 'Analyzing data...'
     progress.value = 60
@@ -420,6 +429,8 @@ const fullVoiceAnalyzeFlow = async (blob: Blob) => {
       body: JSON.stringify({
         data: searchQuery.value,
         question: questionText,
+        // 🔹 multi-turn context: only last 3 turns
+        history: conversationHistory.value.slice(-3),
       }),
     })
 
@@ -431,6 +442,15 @@ const fullVoiceAnalyzeFlow = async (blob: Blob) => {
     const analyzeJson = await analyzeRes.json()
     const answer = analyzeJson.answer || 'No answer returned.'
     answerText.value = answer
+
+    // 🔹 Update conversation history (keep only last 3 turns)
+    conversationHistory.value.push({
+      user: questionText,
+      assistant: answer,
+    })
+    if (conversationHistory.value.length > 3) {
+      conversationHistory.value = conversationHistory.value.slice(-3)
+    }
 
     // 3) TTS: speak the answer via /api/tts
     status.value = 'Generating voice response...'
@@ -505,7 +525,7 @@ const stopTtsPlayback = () => {
         <li class="fw-medium">
           <a href="index.php" class="d-flex align-items-center gap-1 hover-text-primary">
             <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg"></iconify-icon>
-           Ai Analysis
+            Ai Analysis
           </a>
         </li>
         <li>-</li>
@@ -518,32 +538,43 @@ const stopTtsPlayback = () => {
       <div class="col-lg-12">
         <div class="card">
           <div class="card-header d-flex justify-content-between align-items-center">
-  <h5 class="card-title mb-0">AI Status Analysis</h5>
+            <h5 class="card-title mb-0">AI Status Analysis</h5>
 
-  <div class="d-flex gap-2">
-    <!-- Show AI Answer button only if we already have an answer -->
-    <button
-      v-if="hasAnswer"
-      type="button"
-      class="btn btn-outline-secondary d-flex align-items-center gap-2"
-      @click="openAnswerModal"
-    >
-      <iconify-icon icon="solar:chat-round-dots-bold-duotone" class="icon"></iconify-icon>
-      View AI Insight
-    </button>
+            <div class="d-flex gap-2 align-items-center">
+              <!-- Reset conversation context (appears only if we have history) -->
+              <button
+                v-if="conversationHistory.length"
+                type="button"
+                class="btn btn-soft-light btn-sm d-flex align-items-center gap-1"
+                @click="resetConversation"
+              >
+                <iconify-icon icon="solar:refresh-bold-duotone" class="icon text-sm"></iconify-icon>
+                New Topic
+              </button>
 
-    <!-- Voice button appears only when we have data -->
-    <button
-      v-if="hasData"
-      type="button"
-      class="btn btn-primary-600 d-flex align-items-center gap-2"
-      @click="openVoiceModal"
-    >
-      <iconify-icon icon="solar:microphone-bold-duotone" class="icon"></iconify-icon>
-      Analyze with AI
-    </button>
-  </div>
-</div>
+              <!-- Show AI Answer button only if we already have an answer -->
+              <button
+                v-if="hasAnswer"
+                type="button"
+                class="btn btn-outline-secondary d-flex align-items-center gap-2"
+                @click="openAnswerModal"
+              >
+                <iconify-icon icon="solar:chat-round-dots-bold-duotone" class="icon"></iconify-icon>
+                View AI Insight
+              </button>
+
+              <!-- Voice button appears only when we have data -->
+              <button
+                v-if="hasData"
+                type="button"
+                class="btn btn-primary-600 d-flex align-items-center gap-2"
+                @click="openVoiceModal"
+              >
+                <iconify-icon icon="solar:microphone-bold-duotone" class="icon"></iconify-icon>
+                Analyze with AI
+              </button>
+            </div>
+          </div>
 
           <div class="card-body">
             <form class="row gy-3 needs-validation" novalidate @submit.prevent="search">
@@ -580,7 +611,6 @@ const stopTtsPlayback = () => {
     <div class="dashboard-main-body" v-if="hasData">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
         <h6 class="fw-semibold mb-0">Result</h6>
-
       </div>
 
       <div class="row row-cols-xxxl-5 row-cols-lg-3 row-cols-sm-2 row-cols-1 gy-4">
@@ -594,16 +624,12 @@ const stopTtsPlayback = () => {
                   <h6 class="mb-0">{{ searchQuery.charity?.summary?.total_success_count }} </h6>
                 </div>
                 <div class="w-50-px h-50-px bg-cyan rounded-circle d-flex justify-content-center align-items-center">
-                  <!-- Hand + heart for charities -->
                   <iconify-icon icon="mdi:hand-heart-outline" class="text-white text-2xl mb-0"></iconify-icon>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-
-
 
         <!-- Total Charities Amount -->
         <div class="col">
@@ -615,38 +641,34 @@ const stopTtsPlayback = () => {
                   <h6 class="mb-0">{{ searchQuery.charity?.summary?.total_success_amount }} OMR</h6>
                 </div>
                 <div class="w-50-px h-50-px bg-purple rounded-circle d-flex justify-content-center align-items-center">
-                  <!-- Coin in hand = money donated -->
                   <iconify-icon icon="mdi:hand-coin-outline" class="text-white text-2xl mb-0"></iconify-icon>
                 </div>
               </div>
             </div>
           </div>
         </div>
-
-
-
-
       </div>
 
-
+      <!-- Charts & table (unchanged) -->
       <div class="row gy-4 mt-1">
         <div class="col-xxl-6 col-xl-12">
           <div class="card h-100">
             <div class="card-body">
               <div class="d-flex flex-wrap align-items-center justify-content-between">
                 <h6 class="text-lg mb-0">Charity Statistic</h6>
-
-
               </div>
 
-              <div class="d-flex flex-wrap align-items-center gap-2 mt-8">
-
-              </div>
+              <div class="d-flex flex-wrap align-items-center gap-2 mt-8"></div>
 
               <div class="pt-28 apexcharts-tooltip-style-1">
                 <ClientOnly>
-                  <apexchart v-if="dailySeries.length > 0" type="line" height="320" :options="dailyLineOptions"
-                    :series="[{ name: 'Total Amount (Success)', data: dailySeries }]" />
+                  <apexchart
+                    v-if="dailySeries.length > 0"
+                    type="line"
+                    height="320"
+                    :options="dailyLineOptions"
+                    :series="[{ name: 'Total Amount (Success)', data: dailySeries }]"
+                  />
                   <div v-else class="text-muted text-sm">
                     No charity data for this date range.
                   </div>
@@ -655,32 +677,31 @@ const stopTtsPlayback = () => {
             </div>
           </div>
         </div>
+
         <div class="col-xxl-3 col-xl-12">
           <div class="card h-100">
             <div class="card-body">
               <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
                 <h6 class="mb-2 fw-bold text-lg mb-0">Top Locations</h6>
-
               </div>
 
               <div class="mt-32">
-
                 <ClientOnly>
-                  <apexchart v-if="topLocationsSeries.length > 0" type="pie" height="260"
-                    :options="topLocationsPieOptions" :series="topLocationsSeries" />
+                  <apexchart
+                    v-if="topLocationsSeries.length > 0"
+                    type="pie"
+                    height="260"
+                    :options="topLocationsPieOptions"
+                    :series="topLocationsSeries"
+                  />
                   <div v-else class="text-muted text-sm">
                     No charity location transactions found in this date range.
                   </div>
                 </ClientOnly>
-
-
-
               </div>
-
             </div>
           </div>
         </div>
-
 
         <div class="col-xxl-3 col-xl-12">
           <div class="card h-100">
@@ -695,40 +716,45 @@ const stopTtsPlayback = () => {
               </div>
 
               <div class="mt-32">
-
                 <ClientOnly>
-                  <apexchart v-if="topDevicesSeries.length > 0" type="pie" height="260" :options="topDevicesPieOptions"
-                    :series="topDevicesSeries" />
+                  <apexchart
+                    v-if="topDevicesSeries.length > 0"
+                    type="pie"
+                    height="260"
+                    :options="topDevicesPieOptions"
+                    :series="topDevicesSeries"
+                  />
                   <div v-else class="text-muted text-sm">
                     No device transactions found in this date range.
                   </div>
                 </ClientOnly>
-
               </div>
             </div>
           </div>
         </div>
 
-
-
-
         <div class="col-xxl-9 col-xl-12">
           <div class="card h-100">
             <div class="card-body p-24">
-
               <div class="d-flex flex-wrap align-items-center gap-1 justify-content-between mb-16">
                 <ul class="nav border-gradient-tab nav-pills mb-0" id="pills-tab" role="tablist">
                   <li class="nav-item" role="presentation">
-                    <button class="nav-link d-flex align-items-center active" id="pills-to-do-list-tab"
-                      data-bs-toggle="pill" data-bs-target="#pills-to-do-list" type="button" role="tab"
-                      aria-controls="pills-to-do-list" aria-selected="true">
+                    <button
+                      class="nav-link d-flex align-items-center active"
+                      id="pills-to-do-list-tab"
+                      data-bs-toggle="pill"
+                      data-bs-target="#pills-to-do-list"
+                      type="button"
+                      role="tab"
+                      aria-controls="pills-to-do-list"
+                      aria-selected="true"
+                    >
                       Latest Charities
                       <span
                         class="text-sm fw-semibold py-6 px-12 bg-neutral-500 rounded-pill text-white line-height-1 ms-12 notification-alert">
                       </span>
                     </button>
                   </li>
-
                 </ul>
                 <a href="javascript:void(0)"
                   class="text-primary-600 hover-text-primary d-flex align-items-center gap-1">
@@ -738,11 +764,14 @@ const stopTtsPlayback = () => {
               </div>
 
               <div class="tab-content" id="pills-tabContent">
-                <div class="tab-pane fade show active" id="pills-to-do-list" role="tabpanel"
-                  aria-labelledby="pills-to-do-list-tab" tabindex="0">
+                <div
+                  class="tab-pane fade show active"
+                  id="pills-to-do-list"
+                  role="tabpanel"
+                  aria-labelledby="pills-to-do-list-tab"
+                  tabindex="0"
+                >
                   <div class="table-responsive scroll-sm">
-
-
                     <table class="table bordered-table sm-table mb-0">
                       <thead>
                         <tr>
@@ -755,11 +784,11 @@ const stopTtsPlayback = () => {
                         </tr>
                       </thead>
                       <tbody>
-
-                        <tr v-for="(transaction, index) in searchQuery.charity?.transactions" :key="transaction.id">
-                          <td>
-                            {{ index + 1 }}
-                          </td>
+                        <tr
+                          v-for="(transaction, index) in searchQuery.charity?.transactions"
+                          :key="transaction.id"
+                        >
+                          <td>{{ index + 1 }}</td>
                           <td>{{ transaction.device?.devicemodel?.name }}</td>
                           <td>{{ transaction.bank?.name || 'N/A' }}</td>
                           <td>{{ transaction.total_amount }} OMR</td>
@@ -768,12 +797,6 @@ const stopTtsPlayback = () => {
                           </td>
                           <td>{{ new Date(transaction.created_at).toLocaleDateString() }}</td>
                         </tr>
-
-
-
-
-
-
                       </tbody>
                     </table>
                   </div>
@@ -783,6 +806,7 @@ const stopTtsPlayback = () => {
             </div>
           </div>
         </div>
+
         <div class="col-xxl-3 col-xl-12">
           <div class="card h-100">
             <div class="card-body">
@@ -796,29 +820,26 @@ const stopTtsPlayback = () => {
               </div>
 
               <div class="mt-32">
-
                 <div class="d-flex align-items-center justify-content-between gap-3 mb-24">
-
                   <ClientOnly>
-                    <apexchart v-if="topBanksSeries.length > 0" type="pie" height="260" :options="topBanksPieOptions"
-                      :series="topBanksSeries" />
+                    <apexchart
+                      v-if="topBanksSeries.length > 0"
+                      type="pie"
+                      height="260"
+                      :options="topBanksPieOptions"
+                      :series="topBanksSeries"
+                    />
                     <div v-else class="text-muted text-sm">
                       No bank transactions found in this date range.
                     </div>
                   </ClientOnly>
-
-
                 </div>
-
               </div>
             </div>
           </div>
-
         </div>
-      </div>
-    </div>
-
-
+      </div> <!-- row -->
+    </div> <!-- dashboard-main-body (hasData) -->
 
     <!-- Error display (optional) -->
     <div v-if="error" class="alert alert-danger mt-3">
@@ -843,8 +864,11 @@ const stopTtsPlayback = () => {
             </p>
           </div>
 
-          <button type="button" class="btn btn-sm btn-outline-secondary rounded-circle voice-close-btn"
-            @click="closeVoiceModal">
+          <button
+            type="button"
+            class="btn btn-sm btn-outline-secondary rounded-circle voice-close-btn"
+            @click="closeVoiceModal"
+          >
             ✕
           </button>
         </div>
@@ -856,10 +880,16 @@ const stopTtsPlayback = () => {
             <span class="wave-ring ring-2" :class="{ 'wave-ring-active': isRecording }"></span>
             <span class="wave-ring ring-3" :class="{ 'wave-ring-active': isRecording }"></span>
 
-            <button type="button" class="voice-mic-btn" :class="{ 'voice-mic-btn-recording': isRecording }"
-              @click="startOrStopRecording">
-              <iconify-icon :icon="isRecording ? 'solar:stop-bold-duotone' : 'solar:microphone-bold-duotone'"
-                class="voice-mic-icon"></iconify-icon>
+            <button
+              type="button"
+              class="voice-mic-btn"
+              :class="{ 'voice-mic-btn-recording': isRecording }"
+              @click="startOrStopRecording"
+            >
+              <iconify-icon
+                :icon="isRecording ? 'solar:stop-bold-duotone' : 'solar:microphone-bold-duotone'"
+                class="voice-mic-icon">
+              </iconify-icon>
             </button>
           </div>
 
@@ -886,16 +916,19 @@ const stopTtsPlayback = () => {
             {{ isPlayingTts ? 'AI is speaking…' : 'Tap the mic to start and stop recording.' }}
           </span>
 
-          <button v-if="isPlayingTts" type="button" class="btn btn-outline-danger btn-sm" @click="stopTtsPlayback">
+          <button
+            v-if="isPlayingTts"
+            type="button"
+            class="btn btn-outline-danger btn-sm"
+            @click="stopTtsPlayback"
+          >
             Stop Voice
           </button>
         </div>
       </div>
     </div>
 
-  </div>
-
-      <!-- AI Answer Modal -->
+    <!-- AI Answer Modal -->
     <div
       v-if="showAnswerModal"
       class="answer-modal-overlay"
@@ -919,7 +952,7 @@ const stopTtsPlayback = () => {
         </div>
 
         <div class="mb-3">
-          <p class="text-muted small mb-1">Your question</p>
+          <p class="text-muted small mb-1">Your latest question</p>
           <div class="answer-question-pill">
             {{ transcript || 'No question text available.' }}
           </div>
@@ -931,18 +964,42 @@ const stopTtsPlayback = () => {
             {{ answerText || 'No answer received yet.' }}
           </div>
         </div>
+
+        <!-- Recent conversation (multi-turn thread) -->
+        <div
+          v-if="conversationHistory.length"
+          class="answer-history mt-3"
+        >
+          <p class="text-muted small mb-1">Recent conversation</p>
+          <div class="answer-history-list">
+            <div
+              v-for="(turn, idx) in conversationHistory"
+              :key="idx"
+              class="answer-turn"
+            >
+              <div class="answer-turn-q">
+                <span class="turn-label">Q{{ idx + 1 }}:</span>
+                <span class="turn-text">{{ turn.user }}</span>
+              </div>
+              <div class="answer-turn-a">
+                <span class="turn-label">A{{ idx + 1 }}:</span>
+                <span class="turn-text">{{ turn.assistant }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
+  </div>
 </template>
-
 
 <style scoped>
 .voice-modal-overlay {
   position: fixed;
   inset: 0;
   background: rgba(15, 23, 42, 0.25);
-  /* softer */
   backdrop-filter: blur(8px);
   display: flex;
   align-items: center;
@@ -999,11 +1056,9 @@ const stopTtsPlayback = () => {
   0% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5);
   }
-
   70% {
     box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
   }
-
   100% {
     box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
   }
@@ -1077,12 +1132,10 @@ const stopTtsPlayback = () => {
     opacity: 0.1;
     transform: scale(0.85);
   }
-
   40% {
     opacity: 0.5;
     transform: scale(1);
   }
-
   100% {
     opacity: 0;
     transform: scale(1.15);
@@ -1151,12 +1204,10 @@ const stopTtsPlayback = () => {
   0% {
     background-position: 0% 50%;
   }
-
   100% {
     background-position: -200% 50%;
   }
 }
-
 
 /* --- AI Answer Modal --- */
 .answer-modal-overlay {
@@ -1166,8 +1217,8 @@ const stopTtsPlayback = () => {
   align-items: flex-end;
   justify-content: center;
   padding: 16px;
-  background: transparent; /* no dark overlay, just a floating card */
-  pointer-events: none;     /* so clicks pass through except on card */
+  background: transparent;
+  pointer-events: none;
   z-index: 10000;
 }
 
@@ -1222,4 +1273,41 @@ const stopTtsPlayback = () => {
   color: #111827;
 }
 
+/* conversation history section */
+.answer-history-list {
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px dashed #e5e7eb;
+  background: #f9fafb;
+}
+
+.answer-turn + .answer-turn {
+  margin-top: 6px;
+}
+
+.answer-turn-q,
+.answer-turn-a {
+  display: flex;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.answer-turn-q {
+  color: #111827;
+}
+
+.answer-turn-a {
+  color: #374151;
+}
+
+.turn-label {
+  font-weight: 600;
+  color: #0ea5e9;
+}
+
+.turn-text {
+  flex: 1;
+}
 </style>

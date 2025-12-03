@@ -555,47 +555,116 @@ onMounted(() => {
 
 
 
-     <div class="dashboard-main-body">
-
-        <div class="row gy-4">
-            <div class="col-lg-12">
-                <div class="card">
-
-
-                    <div class="card radius-16 mt-24">
-                        <div class="card-header">
-                            <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-                                 <h6 class="text-lg mb-0">Sales by Hour</h6>
-          <span class="text-muted small">
-            Sum of successful donations per weekday & hour
-          </span>
-                            </div>
-                        </div>
-
-                        <div class="card-body">
-
-                              <div v-if="loading" class="text-center py-5">
-                                        Loading...
-                                    </div>
-
-                                    <ClientOnly v-else>
-                                        <apexchart
-                                        type="heatmap"
-                                        height="380"
-                                        :options="salesByHourOptions"
-                                        :series="salesByHourSeries"
-                                        />
-                                    </ClientOnly>
-
-                        </div>
-                    </div>
-
-
-                </div>
-
+    <div class="dashboard-main-body">
+  <div class="row gy-4">
+    <div class="col-lg-12">
+      <div class="card radius-16 shadow-sm border-0 mt-0">
+        <!-- Header -->
+        <div
+          class="card-header border-0 d-flex align-items-center flex-wrap gap-3 justify-content-between"
+        >
+          <div class="d-flex align-items-center gap-3">
+            <div
+              class="w-40-px h-40-px rounded-circle bg-primary-50 d-flex align-items-center justify-content-center"
+            >
+              <iconify-icon
+                icon="mdi:chart-timeline-variant-shimmer"
+                class="text-primary-600 text-xl"
+              ></iconify-icon>
             </div>
+            <div>
+              <h6 class="text-lg mb-1">Sales by Hour</h6>
+              <p class="mb-0 text-xs text-neutral-500">
+                Sum of successful donations grouped by weekday and hour of the day.
+              </p>
+            </div>
+          </div>
+
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span
+              class="badge bg-primary-50 text-primary-600 text-xxs text-uppercase d-flex align-items-center gap-1"
+            >
+              <iconify-icon icon="mdi:calendar-range" class="text-xs"></iconify-icon>
+              <span>
+                Range:
+                <span v-if="activeRange === '7d'">Last 7 days</span>
+                <span v-else-if="activeRange === '30d'">Last 30 days</span>
+                <span v-else-if="activeRange === '6m'">Last 6 months</span>
+                <span v-else>Custom</span>
+              </span>
+            </span>
+          </div>
         </div>
+
+        <!-- Body -->
+        <div class="card-body pt-0">
+          <!-- Loading state -->
+          <div
+            v-if="loading"
+            class="d-flex flex-column align-items-center justify-content-center py-5"
+          >
+            <div class="spinner-border text-primary mb-3" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mb-0 text-xs text-neutral-500">
+              Preparing your hourly donations heatmap…
+            </p>
+          </div>
+
+          <!-- Chart -->
+          <ClientOnly v-else>
+            <div class="border rounded-3 p-3 bg-light">
+              <apexchart
+                type="heatmap"
+                height="380"
+                :options="salesByHourOptions"
+                :series="salesByHourSeries"
+              />
+            </div>
+          </ClientOnly>
+
+          <!-- Legend + helper text -->
+          <div
+            class="d-flex flex-wrap align-items-center justify-content-between gap-3 mt-3"
+          >
+            <div class="d-flex flex-wrap align-items-center gap-3 small text-neutral-500">
+              <span class="d-inline-flex align-items-center gap-1">
+                <span
+                  style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#f9fafb;border:1px solid #e5e7eb;"
+                ></span>
+                No sales
+              </span>
+              <span class="d-inline-flex align-items-center gap-1">
+                <span
+                  style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#fed7aa;"
+                ></span>
+                Low
+              </span>
+              <span class="d-inline-flex align-items-center gap-1">
+                <span
+                  style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#fb923c;"
+                ></span>
+                Medium
+              </span>
+              <span class="d-inline-flex align-items-center gap-1">
+                <span
+                  style="display:inline-block;width:10px;height:10px;border-radius:999px;background:#f97316;"
+                ></span>
+                High
+              </span>
+            </div>
+
+            <p class="mb-0 text-xs text-neutral-400 text-end">
+              Darker cells highlight your peak donation hours. Use this to plan campaigns
+              and messaging.
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
+  </div>
+</div>
+
 
 
 </template>

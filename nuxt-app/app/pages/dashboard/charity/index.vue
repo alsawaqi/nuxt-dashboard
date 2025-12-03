@@ -58,7 +58,11 @@ const loadTransactions = async (): Promise<void> => {
       params.to = to.value
     }
 
-    const { data } = await $api.get('/api/stats/charity/transactions', { params })
+   const { data } = await $api.get('/api/stats/charity/transactions', {
+                params,
+               
+              })
+
 
     transactions.value = data.transactions || []
 

@@ -1,6 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 
+import { useAuthStore } from '~/stores/auth'
+
+const auth = useAuthStore()
+
 // Nuxt 3 auto-imports useRoute()
 const route = useRoute()
 
@@ -38,7 +42,7 @@ const isStatusGroupActive = computed(() =>
     <div class="sidebar-menu-area">
       <ul class="sidebar-menu" id="sidebar-menu">
         <!-- Dashboard -->
-        <li :class="{ active: isActive('/dashboard') }">
+        <li :class="{ active: isActive('/dashboard') }" v-if="auth.user?.id == 1">
           <NuxtLink to="/dashboard">
             <iconify-icon icon="solar:home-smile-angle-outline" class="menu-icon"></iconify-icon>
             <span>Dashboard</span>
@@ -49,7 +53,7 @@ const isStatusGroupActive = computed(() =>
         <li class="sidebar-menu-group-title">Application</li>
 
         <!-- Devices -->
-        <li :class="{ active: isActive('/dashboard/devices') }">
+        <li :class="{ active: isActive('/dashboard/devices') }" v-if="auth.user?.id == 1">
           <NuxtLink to="/dashboard/devices">
             <iconify-icon icon="mdi:devices" class="menu-icon"></iconify-icon>
             <span>Devices</span>
@@ -66,8 +70,10 @@ const isStatusGroupActive = computed(() =>
 
         <!-- Status dropdown -->
         <li
+        v-show="auth.user?.id == 1"
           class="dropdown"
           :class="{ active: isStatusGroupActive }"
+          
         >
           <a href="javascript:void(0)">
             <!-- Main Status icon: analytics/overview -->
@@ -104,6 +110,13 @@ const isStatusGroupActive = computed(() =>
               <NuxtLink to="/dashboard/ai">
                 <iconify-icon icon="ri:robot-2-line" class="menu-icon"></iconify-icon>
                 <span>AI Analysis</span>
+              </NuxtLink>
+            </li>
+
+             <li :class="{ active: isActive('/dashboard/ai/overview') }">
+              <NuxtLink to="/dashboard/ai/overview">
+                <iconify-icon icon="ri:robot-2-line" class="menu-icon"></iconify-icon>
+                <span>AI Overview</span>
               </NuxtLink>
             </li>
           </ul>
