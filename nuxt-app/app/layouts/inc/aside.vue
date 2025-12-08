@@ -316,8 +316,8 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
             <!-- If you want Devices also under Admin, uncomment this and
                  keep the same route so it's not broken:
                    -->
-            <li :class="{ active: isActive('/dashboard/devices') }">
-              <NuxtLink to="/dashboard/devices">
+            <li :class="{ active: isActive('/dashboard/device') }">
+              <NuxtLink to="/dashboard/device">
                 <iconify-icon
                   icon="mdi:devices"
                   class="menu-icon"
