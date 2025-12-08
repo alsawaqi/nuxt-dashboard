@@ -315,6 +315,7 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
 
             <!-- If you want Devices also under Admin, uncomment this and
                  keep the same route so it's not broken:
+                   -->
             <li :class="{ active: isActive('/dashboard/devices') }">
               <NuxtLink to="/dashboard/devices">
                 <iconify-icon
@@ -324,7 +325,7 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
                 <span>Devices</span>
               </NuxtLink>
             </li>
-            -->
+          
           </ul>
         </li>
       </ul>
