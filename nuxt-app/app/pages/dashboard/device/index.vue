@@ -1,10 +1,10 @@
- <script setup lang="ts">
+<script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
 import { definePageMeta, useNuxtApp } from '#imports'
 
 definePageMeta({
   layout: 'admin',
-  middleware: 'auth' as any,// adjust to your permission key
+  middleware: 'auth' as any, // adjust to your permission key
 })
 const { $api } = useNuxtApp() as any
 
@@ -42,10 +42,17 @@ interface CityOption {
   region_id: number
 }
 
+interface MainLocationOption {
+  id: number
+  name: string
+  city_id: number
+}
+
 interface CharityLocationOption {
   id: number
   name: string
   city_id: number | null
+  main_location_id: number | null
 }
 
 interface CommissionProfileOption {
@@ -62,6 +69,7 @@ interface DeviceForm {
   country_id: number | null
   region_id: number | null
   city_id: number | null
+  main_location_id: number | null
   charity_location_id: number | null
   commission_profile_id: number | null
   kiosk_id: string
@@ -95,6 +103,7 @@ const banks = ref<BankOption[]>([])
 const countries = ref<CountryOption[]>([])
 const regions = ref<RegionOption[]>([])
 const cities = ref<CityOption[]>([])
+const mainLocations = ref<MainLocationOption[]>([])
 const charityLocations = ref<CharityLocationOption[]>([])
 const commissionProfiles = ref<CommissionProfileOption[]>([])
 
@@ -129,6 +138,7 @@ const createForm = reactive<DeviceForm>({
   country_id: null,
   region_id: null,
   city_id: null,
+  main_location_id: null,
   charity_location_id: null,
   commission_profile_id: null,
   kiosk_id: '',
@@ -147,6 +157,7 @@ const editForm = reactive<DeviceForm>({
   country_id: null,
   region_id: null,
   city_id: null,
+  main_location_id: null,
   charity_location_id: null,
   commission_profile_id: null,
   kiosk_id: '',
@@ -170,10 +181,20 @@ const citiesForCreate = computed(() =>
   cities.value.filter((c) => c.region_id === createForm.region_id)
 )
 
+const mainLocationsForCreate = computed(() =>
+  mainLocations.value.filter((m) => m.city_id === createForm.city_id)
+)
+
 const charityLocationsForCreate = computed(() =>
-  charityLocations.value.filter(
-    (cl) => cl.city_id === createForm.city_id
-  )
+  charityLocations.value.filter((cl) => {
+    if (createForm.main_location_id) {
+      return cl.main_location_id === createForm.main_location_id
+    }
+    if (createForm.city_id) {
+      return cl.city_id === createForm.city_id
+    }
+    return false
+  })
 )
 
 // ---------- Computed: filtered dropdowns (edit) ----------
@@ -191,10 +212,20 @@ const citiesForEdit = computed(() =>
   cities.value.filter((c) => c.region_id === editForm.region_id)
 )
 
+const mainLocationsForEdit = computed(() =>
+  mainLocations.value.filter((m) => m.city_id === editForm.city_id)
+)
+
 const charityLocationsForEdit = computed(() =>
-  charityLocations.value.filter(
-    (cl) => cl.city_id === editForm.city_id
-  )
+  charityLocations.value.filter((cl) => {
+    if (editForm.main_location_id) {
+      return cl.main_location_id === editForm.main_location_id
+    }
+    if (editForm.city_id) {
+      return cl.city_id === editForm.city_id
+    }
+    return false
+  })
 )
 
 // ---------- Watchers: cascade resets (create) ----------
@@ -210,6 +241,7 @@ watch(
   () => {
     createForm.region_id = null
     createForm.city_id = null
+    createForm.main_location_id = null
     createForm.charity_location_id = null
   }
 )
@@ -218,12 +250,21 @@ watch(
   () => createForm.region_id,
   () => {
     createForm.city_id = null
+    createForm.main_location_id = null
     createForm.charity_location_id = null
   }
 )
 
 watch(
   () => createForm.city_id,
+  () => {
+    createForm.main_location_id = null
+    createForm.charity_location_id = null
+  }
+)
+
+watch(
+  () => createForm.main_location_id,
   () => {
     createForm.charity_location_id = null
   }
@@ -242,6 +283,7 @@ watch(
   () => {
     editForm.region_id = null
     editForm.city_id = null
+    editForm.main_location_id = null
     editForm.charity_location_id = null
   }
 )
@@ -250,12 +292,21 @@ watch(
   () => editForm.region_id,
   () => {
     editForm.city_id = null
+    editForm.main_location_id = null
     editForm.charity_location_id = null
   }
 )
 
 watch(
   () => editForm.city_id,
+  () => {
+    editForm.main_location_id = null
+    editForm.charity_location_id = null
+  }
+)
+
+watch(
+  () => editForm.main_location_id,
   () => {
     editForm.charity_location_id = null
   }
@@ -283,13 +334,21 @@ const getCityName = (id?: number | null) =>
 const getCharityLocationName = (id?: number | null) =>
   charityLocations.value.find((cl) => cl.id === id)?.name ?? '-'
 
+const getMainLocationNameByCharity = (charityId?: number | null) => {
+  const cl = charityLocations.value.find((c) => c.id === charityId)
+  if (!cl?.main_location_id) return '-'
+  const ml = mainLocations.value.find((m) => m.id === cl.main_location_id)
+  return ml?.name ?? '-'
+}
+
 const getCommissionProfileName = (id?: number | null) =>
   commissionProfiles.value.find((p) => p.id === id)?.name ?? '-'
 
 const formatDate = (d?: string | null) => (d ? d : '—')
 
 // ---------- API: small helper to normalize list responses ----------
-const normalizeList = (data: any) => (Array.isArray(data) ? data : data?.data ?? [])
+const normalizeList = (data: any) =>
+  (Array.isArray(data) ? data : data?.data ?? [])
 
 // ---------- API: fetch dropdown data ----------
 const fetchDeviceBrands = async () => {
@@ -358,6 +417,17 @@ const fetchCities = async () => {
   }
 }
 
+const fetchMainLocations = async () => {
+  try {
+    const { data } = await $api.get('/api/main-locations', {
+      params: { page: 1, per_page: 9999, sortBy: 'name', sortDir: 'asc' },
+    })
+    mainLocations.value = normalizeList(data)
+  } catch (e) {
+    console.error('Error fetching main locations', e)
+  }
+}
+
 const fetchCharityLocations = async () => {
   try {
     const { data } = await $api.get('/api/charity-locations', {
@@ -421,6 +491,7 @@ const resetCreateForm = () => {
   createForm.country_id = null
   createForm.region_id = null
   createForm.city_id = null
+  createForm.main_location_id = null
   createForm.charity_location_id = null
   createForm.commission_profile_id = null
   createForm.kiosk_id = ''
@@ -480,10 +551,36 @@ const openEditModal = async (id: number) => {
     editForm.device_model_id = data.device_model_id ?? null
     editForm.bank_id = data.bank_id ?? null
     editForm.model_number = data.model_number ?? ''
+
     editForm.country_id = data.country_id ?? null
     editForm.region_id = data.region_id ?? null
     editForm.city_id = data.city_id ?? null
-    editForm.charity_location_id = data.charity_location_id ?? null
+
+    // main_location + charity_location from device / charity relationship
+    editForm.main_location_id = null
+    const charityLocationId: number | null = data.charity_location_id ?? null
+
+    let mainLocationId: number | null = null
+    const charityFromShow = (data as any).charity_location
+    if (charityFromShow) {
+      mainLocationId = charityFromShow.main_location_id ?? null
+      if (!editForm.city_id) {
+        editForm.city_id = charityFromShow.city_id ?? null
+      }
+    } else if (charityLocationId) {
+      const found = charityLocations.value.find(
+        (cl) => cl.id === charityLocationId
+      )
+      if (found) {
+        mainLocationId = found.main_location_id ?? null
+        if (!editForm.city_id) {
+          editForm.city_id = found.city_id ?? null
+        }
+      }
+    }
+    editForm.main_location_id = mainLocationId
+    editForm.charity_location_id = charityLocationId
+
     editForm.commission_profile_id = data.commission_profile_id ?? null
     editForm.kiosk_id = data.kiosk_id ?? ''
     editForm.login_generated_token = data.login_generated_token ?? ''
@@ -593,6 +690,7 @@ onMounted(async () => {
     fetchCountries(),
     fetchRegions(),
     fetchCities(),
+    fetchMainLocations(),
     fetchCharityLocations(),
     fetchCommissionProfiles(),
   ])
@@ -690,7 +788,7 @@ onMounted(async () => {
               />
             </div>
 
-            <!-- Row 2: Country / Region / City / Charity Location -->
+            <!-- Row 2: Country / Region / City / Main Location -->
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                 Country <span class="text-danger-600">*</span>
@@ -753,6 +851,27 @@ onMounted(async () => {
 
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+                Main Location
+              </label>
+              <select
+                v-model="createForm.main_location_id"
+                class="form-select radius-8"
+                :disabled="!createForm.city_id"
+              >
+                <option :value="null">No main location</option>
+                <option
+                  v-for="ml in mainLocationsForCreate"
+                  :key="ml.id"
+                  :value="ml.id"
+                >
+                  {{ ml.name }}
+                </option>
+              </select>
+            </div>
+
+            <!-- Row 3: Charity Location / Bank / Commission / Status -->
+            <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                 Charity Location
               </label>
               <select
@@ -771,7 +890,6 @@ onMounted(async () => {
               </select>
             </div>
 
-            <!-- Row 3: Bank / Commission Profile / Status / Installed At -->
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                 Bank
@@ -824,6 +942,7 @@ onMounted(async () => {
               </select>
             </div>
 
+            <!-- Row 4: Installed At / Login token -->
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                 Installed At
@@ -835,7 +954,6 @@ onMounted(async () => {
               />
             </div>
 
-            <!-- Row 4: Login token -->
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                 Login Token
@@ -1006,7 +1124,8 @@ onMounted(async () => {
                   <small class="text-muted">
                     {{ getCountryName(row.country_id) }} /
                     {{ getRegionName(row.region_id) }} /
-                    {{ getCityName(row.city_id) }}
+                    {{ getCityName(row.city_id) }} /
+                    {{ getMainLocationNameByCharity(row.charity_location_id) }}
                   </small>
                 </div>
               </td>
@@ -1129,8 +1248,6 @@ onMounted(async () => {
 
           <form @submit="handleUpdate">
             <div class="row">
-              <!-- same 4x4 style but inside modal -->
-
               <!-- Brand / Model -->
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">
@@ -1239,7 +1356,7 @@ onMounted(async () => {
                 </select>
               </div>
 
-              <!-- City / Charity Location -->
+              <!-- City / Main Location -->
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">
                   City
@@ -1260,6 +1377,27 @@ onMounted(async () => {
                 </select>
               </div>
 
+              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+                <label class="form-label fw-semibold text-sm mb-8">
+                  Main Location
+                </label>
+                <select
+                  v-model="editForm.main_location_id"
+                  class="form-select radius-8"
+                  :disabled="!editForm.city_id"
+                >
+                  <option :value="null">No main location</option>
+                  <option
+                    v-for="ml in mainLocationsForEdit"
+                    :key="ml.id"
+                    :value="ml.id"
+                  >
+                    {{ ml.name }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- Charity Location -->
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">
                   Charity Location
