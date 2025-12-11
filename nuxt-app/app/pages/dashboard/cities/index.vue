@@ -1,13 +1,11 @@
 <script setup lang="ts">
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, reactive, watch, onMounted, computed } from 'vue'
 import { definePageMeta, useNuxtApp } from '#imports'
 
 definePageMeta({
   layout: 'admin',
   middleware: 'auth' as any,
- 
 })
-
 
 const { $api } = useNuxtApp() as any
 
@@ -17,9 +15,18 @@ interface RegionOption {
   country_name?: string
 }
 
+interface DistrictOption {
+  id: number
+  name: string
+  region_id: number
+  region_name?: string
+  country_name?: string
+}
+
 interface City {
   id: number
   region_id: number
+  district_id: number | null
   name: string
   postal_code: string | null
   is_active: boolean
@@ -31,11 +38,24 @@ interface City {
       name: string
     }
   }
+  district?: {
+    id: number
+    name: string
+    region?: {
+      id: number
+      name: string
+      country?: {
+        id: number
+        name: string
+      }
+    }
+  }
 }
 
 interface EditCity {
   id: number | null
   region_id: number | null
+  district_id: number | null
   name: string
   postal_code: string | null
   is_active: boolean
@@ -44,9 +64,11 @@ interface EditCity {
 // -------- State --------
 
 const regions = ref<RegionOption[]>([])
+const districts = ref<DistrictOption[]>([])
 const cities = ref<City[]>([])
 
 const newRegionId = ref<number | null>(null)
+const newDistrictId = ref<number | null>(null)
 const newName = ref<string>('')
 const newPostalCode = ref<string>('')
 const newIsActive = ref<boolean>(true)
@@ -58,6 +80,7 @@ const isToggle = ref<boolean>(false)
 const editedCity = reactive<EditCity>({
   id: null,
   region_id: null,
+  district_id: null,
   name: '',
   postal_code: null,
   is_active: true,
@@ -78,6 +101,16 @@ const pagination = ref({
   last_page: 1,
 })
 
+// -------- Computed (district dropdowns) --------
+
+const districtsForNewCity = computed(() =>
+  districts.value.filter((d) => d.region_id === newRegionId.value)
+)
+
+const districtsForEdit = computed(() =>
+  districts.value.filter((d) => d.region_id === editedCity.region_id)
+)
+
 // -------- API --------
 
 const loadRegions = async () => {
@@ -86,6 +119,8 @@ const loadRegions = async () => {
       params: {
         per_page: 9999,
         page: 1,
+        sortBy: 'name',
+        sortDir: 'asc',
       },
     })
 
@@ -96,6 +131,29 @@ const loadRegions = async () => {
     }))
   } catch (error) {
     console.error('Error loading regions', error)
+  }
+}
+
+const loadDistricts = async () => {
+  try {
+    const { data } = await $api.get('/api/districts', {
+      params: {
+        per_page: 9999,
+        page: 1,
+        sortBy: 'name',
+        sortDir: 'asc',
+      },
+    })
+
+    districts.value = data.data.map((d: any) => ({
+      id: d.id,
+      name: d.name,
+      region_id: d.region_id,
+      region_name: d.region?.name,
+      country_name: d.region?.country?.name,
+    }))
+  } catch (error) {
+    console.error('Error loading districts', error)
   }
 }
 
@@ -132,17 +190,23 @@ const createCity = async (e: Event) => {
     alert('Please select a region')
     return
   }
+  if (!newDistrictId.value) {
+    alert('Please select a district')
+    return
+  }
 
   isSubmit.value = true
   try {
     await $api.post('/api/cities', {
       region_id: newRegionId.value,
+      district_id: newDistrictId.value,
       name: newName.value,
       postal_code: newPostalCode.value || null,
       is_active: newIsActive.value,
     })
 
     newRegionId.value = null
+    newDistrictId.value = null
     newName.value = ''
     newPostalCode.value = ''
     newIsActive.value = true
@@ -150,7 +214,7 @@ const createCity = async (e: Event) => {
     await getCities()
   } catch (error: any) {
     console.error(error)
-    alert('Failed to create city')
+    alert(error?.response?.data?.message || 'Failed to create city')
   } finally {
     isSubmit.value = false
   }
@@ -158,8 +222,8 @@ const createCity = async (e: Event) => {
 
 const updateCity = async (e: Event) => {
   e.preventDefault()
-  if (!editedCity.id || !editedCity.region_id) {
-    alert('Missing city id or region')
+  if (!editedCity.id || !editedCity.region_id || !editedCity.district_id) {
+    alert('Missing city id, region or district')
     return
   }
 
@@ -167,6 +231,7 @@ const updateCity = async (e: Event) => {
   try {
     await $api.put(`/api/cities/${editedCity.id}`, {
       region_id: editedCity.region_id,
+      district_id: editedCity.district_id,
       name: editedCity.name,
       postal_code: editedCity.postal_code || null,
       is_active: editedCity.is_active,
@@ -176,7 +241,7 @@ const updateCity = async (e: Event) => {
     isToggle.value = false
   } catch (error: any) {
     console.error(error)
-    alert('Failed to update city')
+    alert(error?.response?.data?.message || 'Failed to update city')
   } finally {
     isSubmit.value = false
   }
@@ -201,6 +266,7 @@ const TogglePopup = (city?: City) => {
     isToggle.value = true
     editedCity.id = city.id
     editedCity.region_id = city.region_id
+    editedCity.district_id = city.district_id ?? null
     editedCity.name = city.name
     editedCity.postal_code = city.postal_code
     editedCity.is_active = city.is_active
@@ -219,6 +285,8 @@ const toggleSort = (column: string) => {
   table.page = 1
 }
 
+// -------- Watchers --------
+
 watch(
   () => [table.page, table.perPage, table.search, table.sortBy, table.sortDir],
   () => {
@@ -226,12 +294,24 @@ watch(
   }
 )
 
+// reset district when region changes (create)
+watch(newRegionId, () => {
+  newDistrictId.value = null
+})
+
+// reset district when region changes (edit)
+watch(
+  () => editedCity.region_id,
+  () => {
+    editedCity.district_id = null
+  }
+)
+
 onMounted(async () => {
-  await loadRegions()
+  await Promise.all([loadRegions(), loadDistricts()])
   await getCities()
 })
 </script>
-
 
 <template>
   <div class="dashboard-main-body">
@@ -256,6 +336,7 @@ onMounted(async () => {
         <form @submit="createCity">
           <div class="row">
             <div class="col-sm-12">
+              <!-- Region -->
               <div class="mb-20">
                 <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                   Region <span class="text-danger-600">*</span>
@@ -267,12 +348,32 @@ onMounted(async () => {
                 >
                   <option :value="null" disabled>Select region</option>
                   <option v-for="r in regions" :key="r.id" :value="r.id">
-                    <!-- Show Country - Region if country_name exists -->
                     {{ r.country_name ? `${r.country_name} - ${r.name}` : r.name }}
                   </option>
                 </select>
               </div>
 
+              <!-- District -->
+              <div class="mb-20">
+                <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+                  District <span class="text-danger-600">*</span>
+                </label>
+                <select
+                  v-model.number="newDistrictId"
+                  class="form-select radius-8"
+                  :disabled="!newRegionId"
+                  required
+                >
+                  <option :value="null" disabled>
+                    {{ newRegionId ? 'Select district' : 'Select region first' }}
+                  </option>
+                  <option v-for="d in districtsForNewCity" :key="d.id" :value="d.id">
+                    {{ d.name }}
+                  </option>
+                </select>
+              </div>
+
+              <!-- City name -->
               <div class="mb-20">
                 <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                   City Name <span class="text-danger-600">*</span>
@@ -286,6 +387,7 @@ onMounted(async () => {
                 />
               </div>
 
+              <!-- Postal code -->
               <div class="mb-20">
                 <label class="form-label fw-semibold text-primary-light text-sm mb-8">
                   Postal Code
@@ -298,6 +400,7 @@ onMounted(async () => {
                 />
               </div>
 
+              <!-- Active switch -->
               <div class="mb-20 form-check form-switch">
                 <input
                   class="form-check-input"
@@ -309,6 +412,7 @@ onMounted(async () => {
               </div>
             </div>
 
+            <!-- Buttons -->
             <div class="d-flex align-items-center justify-content-center gap-3 mt-24">
               <button
                 type="reset"
@@ -316,6 +420,7 @@ onMounted(async () => {
                 @click="
                   () => {
                     newRegionId = null
+                    newDistrictId = null
                     newName = ''
                     newPostalCode = ''
                     newIsActive = true
@@ -391,6 +496,7 @@ onMounted(async () => {
                 />
               </th>
 
+              <th scope="col">District</th>
               <th scope="col">Region</th>
               <th scope="col">Country</th>
               <th scope="col">Postal Code</th>
@@ -409,8 +515,15 @@ onMounted(async () => {
                 </h6>
               </td>
 
-              <td>{{ city.region?.name || '-' }}</td>
-              <td>{{ city.region?.country?.name || '-' }}</td>
+              <td>{{ city.district?.name || '-' }}</td>
+              <td>{{ city.region?.name || city.district?.region?.name || '-' }}</td>
+              <td>
+                {{
+                  city.region?.country?.name ||
+                    city.district?.region?.country?.name ||
+                    '-'
+                }}
+              </td>
               <td>{{ city.postal_code || '-' }}</td>
 
               <td>
@@ -514,6 +627,7 @@ onMounted(async () => {
           </div>
 
           <form @submit="updateCity">
+            <!-- Region -->
             <div class="mb-3">
               <label class="form-label fw-semibold text-sm">
                 Region <span class="text-danger">*</span>
@@ -526,6 +640,26 @@ onMounted(async () => {
                 <option :value="null" disabled>Select region</option>
                 <option v-for="r in regions" :key="r.id" :value="r.id">
                   {{ r.country_name ? `${r.country_name} - ${r.name}` : r.name }}
+                </option>
+              </select>
+            </div>
+
+            <!-- District -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold text-sm">
+                District <span class="text-danger">*</span>
+              </label>
+              <select
+                v-model.number="editedCity.district_id"
+                class="form-select radius-8"
+                :disabled="!editedCity.region_id"
+                required
+              >
+                <option :value="null" disabled>
+                  {{ editedCity.region_id ? 'Select district' : 'Select region first' }}
+                </option>
+                <option v-for="d in districtsForEdit" :key="d.id" :value="d.id">
+                  {{ d.name }}
                 </option>
               </select>
             </div>
@@ -608,4 +742,3 @@ onMounted(async () => {
   padding: 20px;
 }
 </style>
-

@@ -4,7 +4,7 @@ import { definePageMeta, useNuxtApp } from '#imports'
 
 definePageMeta({
   layout: 'admin',
-  middleware: 'auth' as any,// adjust to your permission key
+  middleware: 'auth' as any, // adjust to your permission key
 })
 
 const { $api } = useNuxtApp() as any
@@ -20,10 +20,13 @@ interface MainLocation {
   name: string
   country_id: number
   region_id: number | null
+  district_id: number | null
   city_id: number | null
   organization_id: number | null
+
   country?: Option | null
   region?: Option | null
+  district?: Option | null
   city?: Option | null
   organization?: Option | null
 }
@@ -31,6 +34,7 @@ interface MainLocation {
 interface CreateForm {
   country_id: number | null
   region_id: number | null
+  district_id: number | null
   city_id: number | null
   organization_id: number | null
   name: string
@@ -47,13 +51,16 @@ const mainLocations = ref<MainLocation[]>([])
 const organizations = ref<Option[]>([])
 const countries = ref<Option[]>([])
 const regionsForCreate = ref<Option[]>([])
+const districtsForCreate = ref<Option[]>([])
 const citiesForCreate = ref<Option[]>([])
 const regionsForEdit = ref<Option[]>([])
+const districtsForEdit = ref<Option[]>([])
 const citiesForEdit = ref<Option[]>([])
 
 const createForm = reactive<CreateForm>({
   country_id: null,
   region_id: null,
+  district_id: null,
   city_id: null,
   organization_id: null,
   name: '',
@@ -63,6 +70,7 @@ const editForm = reactive<EditForm>({
   id: null,
   country_id: null,
   region_id: null,
+  district_id: null,
   city_id: null,
   organization_id: null,
   name: '',
@@ -117,10 +125,21 @@ const fetchRegionsForCreate = async (countryId: number) => {
   }
 }
 
-const fetchCitiesForCreate = async (regionId: number) => {
+const fetchDistrictsForCreate = async (regionId: number) => {
+  try {
+    const { data } = await $api.get('/api/locations/districts', {
+      params: { region_id: regionId },
+    })
+    districtsForCreate.value = data
+  } catch (error) {
+    console.error('Error fetching districts for create:', error)
+  }
+}
+
+const fetchCitiesForCreate = async (districtId: number) => {
   try {
     const { data } = await $api.get('/api/locations/cities', {
-      params: { region_id: regionId },
+      params: { district_id: districtId },
     })
     citiesForCreate.value = data
   } catch (error) {
@@ -139,10 +158,21 @@ const fetchRegionsForEdit = async (countryId: number) => {
   }
 }
 
-const fetchCitiesForEdit = async (regionId: number) => {
+const fetchDistrictsForEdit = async (regionId: number) => {
+  try {
+    const { data } = await $api.get('/api/locations/districts', {
+      params: { region_id: regionId },
+    })
+    districtsForEdit.value = data
+  } catch (error) {
+    console.error('Error fetching districts for edit:', error)
+  }
+}
+
+const fetchCitiesForEdit = async (districtId: number) => {
   try {
     const { data } = await $api.get('/api/locations/cities', {
-      params: { region_id: regionId },
+      params: { district_id: districtId },
     })
     citiesForEdit.value = data
   } catch (error) {
@@ -191,6 +221,7 @@ const handleCreate = async (e: Event) => {
     await $api.post('/api/main-locations', {
       country_id: createForm.country_id,
       region_id: createForm.region_id,
+      district_id: createForm.district_id,
       city_id: createForm.city_id,
       organization_id: createForm.organization_id,
       name: createForm.name,
@@ -199,10 +230,12 @@ const handleCreate = async (e: Event) => {
     // reset form
     createForm.country_id = null
     createForm.region_id = null
+    createForm.district_id = null
     createForm.city_id = null
     createForm.organization_id = null
     createForm.name = ''
     regionsForCreate.value = []
+    districtsForCreate.value = []
     citiesForCreate.value = []
 
     table.page = 1
@@ -222,17 +255,22 @@ const openEditModal = async (loc: MainLocation) => {
   editForm.name = loc.name
   editForm.country_id = loc.country_id
   editForm.region_id = loc.region_id
+  editForm.district_id = loc.district_id
   editForm.city_id = loc.city_id
   editForm.organization_id = loc.organization_id
 
   regionsForEdit.value = []
+  districtsForEdit.value = []
   citiesForEdit.value = []
 
   if (editForm.country_id) {
     await fetchRegionsForEdit(editForm.country_id)
   }
   if (editForm.region_id) {
-    await fetchCitiesForEdit(editForm.region_id)
+    await fetchDistrictsForEdit(editForm.region_id)
+  }
+  if (editForm.district_id) {
+    await fetchCitiesForEdit(editForm.district_id)
   }
 }
 
@@ -253,6 +291,7 @@ const handleUpdate = async (e: Event) => {
     await $api.put(`/api/main-locations/${editForm.id}`, {
       country_id: editForm.country_id,
       region_id: editForm.region_id,
+      district_id: editForm.district_id,
       city_id: editForm.city_id,
       organization_id: editForm.organization_id,
       name: editForm.name,
@@ -297,8 +336,10 @@ watch(
   () => createForm.country_id,
   async newVal => {
     createForm.region_id = null
+    createForm.district_id = null
     createForm.city_id = null
     regionsForCreate.value = []
+    districtsForCreate.value = []
     citiesForCreate.value = []
 
     if (newVal) {
@@ -310,8 +351,23 @@ watch(
 watch(
   () => createForm.region_id,
   async newVal => {
+    createForm.district_id = null
+    createForm.city_id = null
+    districtsForCreate.value = []
+    citiesForCreate.value = []
+
+    if (newVal) {
+      await fetchDistrictsForCreate(newVal)
+    }
+  }
+)
+
+watch(
+  () => createForm.district_id,
+  async newVal => {
     createForm.city_id = null
     citiesForCreate.value = []
+
     if (newVal) {
       await fetchCitiesForCreate(newVal)
     }
@@ -324,8 +380,10 @@ watch(
   async newVal => {
     if (!isToggle.value) return
     editForm.region_id = null
+    editForm.district_id = null
     editForm.city_id = null
     regionsForEdit.value = []
+    districtsForEdit.value = []
     citiesForEdit.value = []
 
     if (newVal) {
@@ -338,8 +396,24 @@ watch(
   () => editForm.region_id,
   async newVal => {
     if (!isToggle.value) return
+    editForm.district_id = null
+    editForm.city_id = null
+    districtsForEdit.value = []
+    citiesForEdit.value = []
+
+    if (newVal) {
+      await fetchDistrictsForEdit(newVal)
+    }
+  }
+)
+
+watch(
+  () => editForm.district_id,
+  async newVal => {
+    if (!isToggle.value) return
     editForm.city_id = null
     citiesForEdit.value = []
+
     if (newVal) {
       await fetchCitiesForEdit(newVal)
     }
@@ -447,6 +521,27 @@ onMounted(async () => {
                 </select>
               </div>
 
+              <!-- District -->
+              <div class="mb-20">
+                <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+                  District
+                </label>
+                <select
+                  v-model="createForm.district_id"
+                  class="form-select radius-8"
+                  :disabled="!createForm.region_id"
+                >
+                  <option :value="null">No district</option>
+                  <option
+                    v-for="d in districtsForCreate"
+                    :key="d.id"
+                    :value="d.id"
+                  >
+                    {{ d.name }}
+                  </option>
+                </select>
+              </div>
+
               <!-- City -->
               <div class="mb-20">
                 <label class="form-label fw-semibold text-primary-light text-sm mb-8">
@@ -455,7 +550,7 @@ onMounted(async () => {
                 <select
                   v-model="createForm.city_id"
                   class="form-select radius-8"
-                  :disabled="!createForm.region_id"
+                  :disabled="!createForm.district_id"
                 >
                   <option :value="null">No city</option>
                   <option
@@ -493,9 +588,11 @@ onMounted(async () => {
                     createForm.organization_id = null
                     createForm.country_id = null
                     createForm.region_id = null
+                    createForm.district_id = null
                     createForm.city_id = null
                     createForm.name = ''
                     regionsForCreate = []
+                    districtsForCreate = []
                     citiesForCreate = []
                   }
                 "
@@ -570,6 +667,7 @@ onMounted(async () => {
               <th scope="col">Organization</th>
               <th scope="col">Country</th>
               <th scope="col">Region</th>
+              <th scope="col">District</th>
               <th scope="col">City</th>
               <th scope="col">Action</th>
             </tr>
@@ -591,6 +689,9 @@ onMounted(async () => {
               </td>
               <td>
                 {{ loc.region?.name ?? '—' }}
+              </td>
+              <td>
+                {{ loc.district?.name ?? '—' }}
               </td>
               <td>
                 {{ loc.city?.name ?? '—' }}
@@ -747,6 +848,27 @@ onMounted(async () => {
               </select>
             </div>
 
+            <!-- District -->
+            <div class="mb-3">
+              <label class="form-label fw-semibold text-sm">
+                District
+              </label>
+              <select
+                v-model="editForm.district_id"
+                class="form-select radius-8"
+                :disabled="!editForm.region_id"
+              >
+                <option :value="null">No district</option>
+                <option
+                  v-for="d in districtsForEdit"
+                  :key="d.id"
+                  :value="d.id"
+                >
+                  {{ d.name }}
+                </option>
+              </select>
+            </div>
+
             <!-- City -->
             <div class="mb-3">
               <label class="form-label fw-semibold text-sm">
@@ -755,7 +877,7 @@ onMounted(async () => {
               <select
                 v-model="editForm.city_id"
                 class="form-select radius-8"
-                :disabled="!editForm.region_id"
+                :disabled="!editForm.district_id"
               >
                 <option :value="null">No city</option>
                 <option

@@ -40,6 +40,7 @@ interface CityOption {
   id: number
   name: string
   region_id: number
+  district_id: number | null
 }
 
 interface MainLocationOption {
@@ -48,9 +49,19 @@ interface MainLocationOption {
   city_id: number
 }
 
+
+interface DistrictOption {
+  id: number
+  name: string
+  region_id: number
+}
+
 interface CharityLocationOption {
   id: number
   name: string
+  country_id?: number | null
+  region_id?: number | null
+  district_id?: number | null
   city_id: number | null
   main_location_id: number | null
 }
@@ -68,6 +79,7 @@ interface DeviceForm {
   model_number: string
   country_id: number | null
   region_id: number | null
+  district_id: number | null
   city_id: number | null
   main_location_id: number | null
   charity_location_id: number | null
@@ -86,6 +98,7 @@ interface DeviceRow {
   model_number?: string | null
   country_id?: number | null
   region_id?: number | null
+  district_id?: number | null
   city_id?: number | null
   charity_location_id?: number | null
   commission_profile_id?: number | null
@@ -102,6 +115,8 @@ const deviceModels = ref<DeviceModelOption[]>([])
 const banks = ref<BankOption[]>([])
 const countries = ref<CountryOption[]>([])
 const regions = ref<RegionOption[]>([])
+const districts = ref<DistrictOption[]>([])  // ⬅️ NEW
+
 const cities = ref<CityOption[]>([])
 const mainLocations = ref<MainLocationOption[]>([])
 const charityLocations = ref<CharityLocationOption[]>([])
@@ -137,6 +152,7 @@ const createForm = reactive<DeviceForm>({
   model_number: '',
   country_id: null,
   region_id: null,
+  district_id: null,
   city_id: null,
   main_location_id: null,
   charity_location_id: null,
@@ -156,6 +172,7 @@ const editForm = reactive<DeviceForm>({
   model_number: '',
   country_id: null,
   region_id: null,
+  district_id: null,
   city_id: null,
   main_location_id: null,
   charity_location_id: null,
@@ -177,8 +194,14 @@ const regionsForCreate = computed(() =>
   regions.value.filter((r) => r.country_id === createForm.country_id)
 )
 
+// NEW: Districts under region
+const districtsForCreate = computed(() =>
+  districts.value.filter((d) => d.region_id === createForm.region_id)
+)
+
+// Cities under district
 const citiesForCreate = computed(() =>
-  cities.value.filter((c) => c.region_id === createForm.region_id)
+  cities.value.filter((c) => c.district_id === createForm.district_id)
 )
 
 const mainLocationsForCreate = computed(() =>
@@ -197,6 +220,7 @@ const charityLocationsForCreate = computed(() =>
   })
 )
 
+
 // ---------- Computed: filtered dropdowns (edit) ----------
 const modelsForEdit = computed(() =>
   deviceModels.value.filter(
@@ -208,8 +232,13 @@ const regionsForEdit = computed(() =>
   regions.value.filter((r) => r.country_id === editForm.country_id)
 )
 
+// NEW
+const districtsForEdit = computed(() =>
+  districts.value.filter((d) => d.region_id === editForm.region_id)
+)
+
 const citiesForEdit = computed(() =>
-  cities.value.filter((c) => c.region_id === editForm.region_id)
+  cities.value.filter((c) => c.district_id === editForm.district_id)
 )
 
 const mainLocationsForEdit = computed(() =>
@@ -228,18 +257,13 @@ const charityLocationsForEdit = computed(() =>
   })
 )
 
-// ---------- Watchers: cascade resets (create) ----------
-watch(
-  () => createForm.device_brand_id,
-  () => {
-    createForm.device_model_id = null
-  }
-)
 
-watch(
+// ---------- Watchers: cascade resets (create) ----------
+ watch(
   () => createForm.country_id,
   () => {
     createForm.region_id = null
+    createForm.district_id = null
     createForm.city_id = null
     createForm.main_location_id = null
     createForm.charity_location_id = null
@@ -248,6 +272,17 @@ watch(
 
 watch(
   () => createForm.region_id,
+  () => {
+    createForm.district_id = null
+    createForm.city_id = null
+    createForm.main_location_id = null
+    createForm.charity_location_id = null
+  }
+)
+
+// NEW: when district changes ⇒ reset city & below
+watch(
+  () => createForm.district_id,
   () => {
     createForm.city_id = null
     createForm.main_location_id = null
@@ -270,6 +305,7 @@ watch(
   }
 )
 
+
 // ---------- Watchers: cascade resets (edit) ----------
 watch(
   () => editForm.device_brand_id,
@@ -278,10 +314,11 @@ watch(
   }
 )
 
-watch(
+ watch(
   () => editForm.country_id,
   () => {
     editForm.region_id = null
+    editForm.district_id = null
     editForm.city_id = null
     editForm.main_location_id = null
     editForm.charity_location_id = null
@@ -290,6 +327,17 @@ watch(
 
 watch(
   () => editForm.region_id,
+  () => {
+    editForm.district_id = null
+    editForm.city_id = null
+    editForm.main_location_id = null
+    editForm.charity_location_id = null
+  }
+)
+
+// NEW
+watch(
+  () => editForm.district_id,
   () => {
     editForm.city_id = null
     editForm.main_location_id = null
@@ -312,6 +360,7 @@ watch(
   }
 )
 
+
 // ---------- Helpers: name lookups for table ----------
 const getBrandName = (id?: number | null) =>
   deviceBrands.value.find((b) => b.id === id)?.name ?? '-'
@@ -327,6 +376,11 @@ const getCountryName = (id?: number | null) =>
 
 const getRegionName = (id?: number | null) =>
   regions.value.find((r) => r.id === id)?.name ?? '-'
+
+
+  // NEW
+const getDistrictName = (id?: number | null) =>
+  districts.value.find((d) => d.id === id)?.name ?? '-'
 
 const getCityName = (id?: number | null) =>
   cities.value.find((c) => c.id === id)?.name ?? '-'
@@ -394,6 +448,19 @@ const fetchCountries = async () => {
     console.error('Error fetching countries', e)
   }
 }
+
+
+const fetchDistricts = async () => {
+  try {
+    const { data } = await $api.get('/api/districts', {
+      params: { page: 1, per_page: 9999, sortBy: 'name', sortDir: 'asc' },
+    })
+    districts.value = normalizeList(data)
+  } catch (e) {
+    console.error('Error fetching districts', e)
+  }
+}
+
 
 const fetchRegions = async () => {
   try {
@@ -490,6 +557,7 @@ const resetCreateForm = () => {
   createForm.model_number = ''
   createForm.country_id = null
   createForm.region_id = null
+  createForm.district_id = null
   createForm.city_id = null
   createForm.main_location_id = null
   createForm.charity_location_id = null
@@ -521,6 +589,7 @@ const handleCreate = async (e: Event) => {
       model_number: createForm.model_number || null,
       country_id: createForm.country_id,
       region_id: createForm.region_id || null,
+      district_id: createForm.district_id || null,
       city_id: createForm.city_id || null,
       charity_location_id: createForm.charity_location_id || null,
       commission_profile_id: createForm.commission_profile_id || null,
@@ -561,23 +630,34 @@ const openEditModal = async (id: number) => {
     const charityLocationId: number | null = data.charity_location_id ?? null
 
     let mainLocationId: number | null = null
+
     const charityFromShow = (data as any).charity_location
-    if (charityFromShow) {
-      mainLocationId = charityFromShow.main_location_id ?? null
-      if (!editForm.city_id) {
-        editForm.city_id = charityFromShow.city_id ?? null
-      }
-    } else if (charityLocationId) {
-      const found = charityLocations.value.find(
-        (cl) => cl.id === charityLocationId
-      )
-      if (found) {
-        mainLocationId = found.main_location_id ?? null
-        if (!editForm.city_id) {
-          editForm.city_id = found.city_id ?? null
-        }
-      }
+if (charityFromShow) {
+  mainLocationId = charityFromShow.main_location_id ?? null
+  if (!editForm.district_id) {
+    editForm.district_id = charityFromShow.district_id ?? null
+  }
+  if (!editForm.city_id) {
+    editForm.city_id = charityFromShow.city_id ?? null
+  }
+} else if (charityLocationId) {
+  const found = charityLocations.value.find(
+    (cl) => cl.id === charityLocationId
+  )
+  if (found) {
+    mainLocationId = found.main_location_id ?? null
+    if (!editForm.district_id) {
+      editForm.district_id = found.district_id ?? null
     }
+    if (!editForm.city_id) {
+      editForm.city_id = found.city_id ?? null
+    }
+  }
+}
+
+
+
+
     editForm.main_location_id = mainLocationId
     editForm.charity_location_id = charityLocationId
 
@@ -623,6 +703,7 @@ const handleUpdate = async (e: Event) => {
       model_number: editForm.model_number || null,
       country_id: editForm.country_id,
       region_id: editForm.region_id || null,
+      district_id: editForm.district_id || null,
       city_id: editForm.city_id || null,
       charity_location_id: editForm.charity_location_id || null,
       commission_profile_id: editForm.commission_profile_id || null,
@@ -689,6 +770,7 @@ onMounted(async () => {
     fetchBanks(),
     fetchCountries(),
     fetchRegions(),
+    fetchDistricts(),
     fetchCities(),
     fetchMainLocations(),
     fetchCharityLocations(),
@@ -789,65 +871,90 @@ onMounted(async () => {
             </div>
 
             <!-- Row 2: Country / Region / City / Main Location -->
-            <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Country <span class="text-danger-600">*</span>
-              </label>
-              <select
-                v-model="createForm.country_id"
-                class="form-select radius-8"
-                required
-              >
-                <option :value="null" disabled>Select country</option>
-                <option
-                  v-for="c in countries"
-                  :key="c.id"
-                  :value="c.id"
-                >
-                  {{ c.name }}
-                </option>
-              </select>
-            </div>
+           <!-- Country -->
+<div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    Country <span class="text-danger-600">*</span>
+  </label>
+  <select
+    v-model="createForm.country_id"
+    class="form-select radius-8"
+    required
+  >
+    <option :value="null" disabled>Select country</option>
+    <option
+      v-for="c in countries"
+      :key="c.id"
+      :value="c.id"
+    >
+      {{ c.name }}
+    </option>
+  </select>
+</div>
 
-            <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Region
-              </label>
-              <select
-                v-model="createForm.region_id"
-                class="form-select radius-8"
-                :disabled="!createForm.country_id"
-              >
-                <option :value="null">No region</option>
-                <option
-                  v-for="r in regionsForCreate"
-                  :key="r.id"
-                  :value="r.id"
-                >
-                  {{ r.name }}
-                </option>
-              </select>
-            </div>
+<!-- Region -->
+<div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    Region
+  </label>
+  <select
+    v-model="createForm.region_id"
+    class="form-select radius-8"
+    :disabled="!createForm.country_id"
+  >
+    <option :value="null">No region</option>
+    <option
+      v-for="r in regionsForCreate"
+      :key="r.id"
+      :value="r.id"
+    >
+      {{ r.name }}
+    </option>
+  </select>
+</div>
 
-            <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                City
-              </label>
-              <select
-                v-model="createForm.city_id"
-                class="form-select radius-8"
-                :disabled="!createForm.region_id"
-              >
-                <option :value="null">No city</option>
-                <option
-                  v-for="c in citiesForCreate"
-                  :key="c.id"
-                  :value="c.id"
-                >
-                  {{ c.name }}
-                </option>
-              </select>
-            </div>
+<!-- District (NEW) -->
+<div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    District
+  </label>
+  <select
+    v-model="createForm.district_id"
+    class="form-select radius-8"
+    :disabled="!createForm.region_id"
+  >
+    <option :value="null">No district</option>
+    <option
+      v-for="d in districtsForCreate"
+      :key="d.id"
+      :value="d.id"
+    >
+      {{ d.name }}
+    </option>
+  </select>
+</div>
+
+<!-- City -->
+<div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    City
+  </label>
+  <select
+    v-model="createForm.city_id"
+    class="form-select radius-8"
+    :disabled="!createForm.district_id"
+  >
+    <option :value="null">No city</option>
+    <option
+      v-for="c in citiesForCreate"
+      :key="c.id"
+      :value="c.id"
+    >
+      {{ c.name }}
+    </option>
+  </select>
+</div>
+
 
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
               <label class="form-label fw-semibold text-primary-light text-sm mb-8">
@@ -1122,11 +1229,13 @@ onMounted(async () => {
                     {{ getCharityLocationName(row.charity_location_id) }}
                   </span>
                   <small class="text-muted">
-                    {{ getCountryName(row.country_id) }} /
-                    {{ getRegionName(row.region_id) }} /
-                    {{ getCityName(row.city_id) }} /
-                    {{ getMainLocationNameByCharity(row.charity_location_id) }}
-                  </small>
+  {{ getCountryName(row.country_id) }} /
+  {{ getRegionName(row.region_id) }} /
+  {{ getDistrictName(row.district_id) }} /
+  {{ getCityName(row.city_id) }} /
+  {{ getMainLocationNameByCharity(row.charity_location_id) }}
+</small>
+
                 </div>
               </td>
 
@@ -1315,67 +1424,90 @@ onMounted(async () => {
                 />
               </div>
 
-              <!-- Country / Region -->
-              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
-                <label class="form-label fw-semibold text-sm mb-8">
-                  Country <span class="text-danger">*</span>
-                </label>
-                <select
-                  v-model="editForm.country_id"
-                  class="form-select radius-8"
-                  required
-                >
-                  <option :value="null" disabled>Select country</option>
-                  <option
-                    v-for="c in countries"
-                    :key="c.id"
-                    :value="c.id"
-                  >
-                    {{ c.name }}
-                  </option>
-                </select>
-              </div>
+               <!-- Country -->
+<div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+  <label class="form-label fw-semibold text-sm mb-8">
+    Country <span class="text-danger">*</span>
+  </label>
+  <select
+    v-model="editForm.country_id"
+    class="form-select radius-8"
+    required
+  >
+    <option :value="null" disabled>Select country</option>
+    <option
+      v-for="c in countries"
+      :key="c.id"
+      :value="c.id"
+    >
+      {{ c.name }}
+    </option>
+  </select>
+</div>
 
-              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
-                <label class="form-label fw-semibold text-sm mb-8">
-                  Region
-                </label>
-                <select
-                  v-model="editForm.region_id"
-                  class="form-select radius-8"
-                  :disabled="!editForm.country_id"
-                >
-                  <option :value="null">No region</option>
-                  <option
-                    v-for="r in regionsForEdit"
-                    :key="r.id"
-                    :value="r.id"
-                  >
-                    {{ r.name }}
-                  </option>
-                </select>
-              </div>
+<!-- Region -->
+<div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+  <label class="form-label fw-semibold text-sm mb-8">
+    Region
+  </label>
+  <select
+    v-model="editForm.region_id"
+    class="form-select radius-8"
+    :disabled="!editForm.country_id"
+  >
+    <option :value="null">No region</option>
+    <option
+      v-for="r in regionsForEdit"
+      :key="r.id"
+      :value="r.id"
+    >
+      {{ r.name }}
+    </option>
+  </select>
+</div>
 
-              <!-- City / Main Location -->
-              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
-                <label class="form-label fw-semibold text-sm mb-8">
-                  City
-                </label>
-                <select
-                  v-model="editForm.city_id"
-                  class="form-select radius-8"
-                  :disabled="!editForm.region_id"
-                >
-                  <option :value="null">No city</option>
-                  <option
-                    v-for="c in citiesForEdit"
-                    :key="c.id"
-                    :value="c.id"
-                  >
-                    {{ c.name }}
-                  </option>
-                </select>
-              </div>
+<!-- District (NEW) -->
+<div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+  <label class="form-label fw-semibold text-sm mb-8">
+    District
+  </label>
+  <select
+    v-model="editForm.district_id"
+    class="form-select radius-8"
+    :disabled="!editForm.region_id"
+  >
+    <option :value="null">No district</option>
+    <option
+      v-for="d in districtsForEdit"
+      :key="d.id"
+      :value="d.id"
+    >
+      {{ d.name }}
+    </option>
+  </select>
+</div>
+
+<!-- City -->
+<div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+  <label class="form-label fw-semibold text-sm mb-8">
+    City
+  </label>
+  <select
+    v-model="editForm.city_id"
+    class="form-select radius-8"
+    :disabled="!editForm.district_id"
+  >
+    <option :value="null">No city</option>
+    <option
+      v-for="c in citiesForEdit"
+      :key="c.id"
+      :value="c.id"
+    >
+      {{ c.name }}
+    </option>
+  </select>
+</div>
+
 
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">

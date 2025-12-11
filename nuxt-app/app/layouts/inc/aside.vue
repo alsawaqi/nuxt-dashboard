@@ -228,6 +228,17 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
               </NuxtLink>
             </li>
 
+
+             <li :class="{ active: isActive('/dashboard/districts') }">
+              <NuxtLink to="/dashboard/districts">
+                <iconify-icon
+                  icon="mdi:map-search-outline"
+                  class="menu-icon"
+                ></iconify-icon>
+                <span>Districts</span>
+              </NuxtLink>
+            </li>
+
             <li :class="{ active: isActive('/dashboard/cities') }">
               <NuxtLink to="/dashboard/cities">
                 <iconify-icon
