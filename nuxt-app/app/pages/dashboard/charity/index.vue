@@ -276,7 +276,8 @@ onMounted(async () => {
                 </td>
                 <td>{{ transaction.total_amount }} OMR</td>
                 <td class="text-center">
-                  {{ transaction.charity_location?.name }}
+                   {{ transaction.charity_location?.main_location?.name }} - {{ transaction.charity_location?.name }}
+                        
                 </td>
                 <td>{{ new Date(transaction.created_at).toLocaleDateString() }}</td>
                 <td>

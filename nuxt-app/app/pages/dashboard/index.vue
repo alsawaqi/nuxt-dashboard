@@ -926,7 +926,7 @@ onMounted(async () => {
                         <td>{{ transaction.bank?.name }}</td>
                         <td>{{ transaction.total_amount }}</td>
                         <td class="text-center">
-                          {{ transaction.charity_location?.name }}
+                        {{ transaction.charity_location?.main_location?.name }} - {{ transaction.charity_location?.name }}
                         </td>
                         <td>
                           {{
