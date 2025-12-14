@@ -479,6 +479,8 @@ const loadTransactions = async (): Promise<void> => {
 
     transactions.value = data.data
 
+    console.log('Loaded transactions:', data.data)
+
   } catch (e: any) {
     console.error(e)
     error.value = 'Failed to load charity stats.'
@@ -891,7 +893,7 @@ onMounted(async () => {
                 </li>
 
               </ul>
-             
+
             </div>
 
             <div class="tab-content" id="pills-tabContent">
@@ -932,10 +934,10 @@ onMounted(async () => {
                               year: 'numeric',
                               month: '2-digit',
                               day: '2-digit',
-                          hour: '2-digit',
-                          minute: '2-digit',
-                          second: '2-digit',
-                          })
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })
                           }}
                         </td>
                       </tr>
@@ -954,7 +956,7 @@ onMounted(async () => {
           <div class="card-body">
             <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
               <h6 class="mb-2 fw-bold text-lg mb-0">Top Banks (Working Progress)</h6>
-             
+
             </div>
 
             <div class="mt-32">

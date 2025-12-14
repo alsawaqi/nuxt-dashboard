@@ -62,7 +62,8 @@ const loadTransactions = async (): Promise<void> => {
                 params,
                
               })
-
+    
+              console.log('API response data:', data.transactions);
 
     transactions.value = data.transactions || []
 
