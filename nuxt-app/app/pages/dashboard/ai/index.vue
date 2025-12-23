@@ -788,7 +788,7 @@ const stopTtsPlayback = () => {
                           v-for="(transaction, index) in searchQuery.charity?.transactions"
                           :key="transaction.id"
                         >
-                          <td>{{ index + 1 }}</td>
+                          <td>{{ Number(index) + 1 }}</td>
                           <td>{{ transaction.device?.devicemodel?.name }}</td>
                           <td>{{ transaction.bank?.name || 'N/A' }}</td>
                           <td>{{ transaction.total_amount }} OMR</td>

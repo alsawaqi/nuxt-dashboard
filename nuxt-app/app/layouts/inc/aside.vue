@@ -36,7 +36,7 @@ const adminGroupRoutes = [
   '/dashboard/device-models',
   '/dashboard/banks',
   '/dashboard/commission-profiles',
-  '/dashboard/devices',
+  '/dashboard/device',
 ]
 
 // Reusable helper
@@ -157,6 +157,17 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
               </NuxtLink>
             </li>
 
+
+             <li :class="{ active: isActive('/dashboard/locations/device-locations') }">
+              <NuxtLink to="/dashboard/locations/device-locations">
+                <iconify-icon
+                  icon="material-symbols:map-outline"
+                  class="menu-icon"
+                ></iconify-icon>
+                <span>Search Device Location</span>
+              </NuxtLink>
+            </li>
+
             <!-- AI Analysis -->
             <li :class="{ active: isActive('/dashboard/ai') }">
               <NuxtLink to="/dashboard/ai">
@@ -203,7 +214,38 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
           </a>
 
           <ul class="sidebar-submenu">
-            <!-- Locations group label (just visual) -->
+
+
+             <!-- Devices & Banking group label -->
+            <li class="sidebar-menu-group-title small px-3 mt-3">
+               Companies & Activities
+            </li>
+
+             <li :class="{ active: isActive('/dashboard/Activities') }">
+              <NuxtLink to="/dashboard/Activities">
+                <iconify-icon
+                  icon="mdi:earth"
+                  class="menu-icon"
+                ></iconify-icon>
+                <span>Activities</span>
+              </NuxtLink>
+            </li>
+
+
+
+              <li :class="{ active: isActive('/dashboard/companies') }">
+              <NuxtLink to="/dashboard/companies">
+                <iconify-icon
+                  icon="mdi:earth"
+                  class="menu-icon"
+                ></iconify-icon>
+                <span>Companies</span>
+              </NuxtLink>
+            </li>
+
+
+
+           
             <li class="sidebar-menu-group-title small px-3 mt-2">
               Locations
             </li>

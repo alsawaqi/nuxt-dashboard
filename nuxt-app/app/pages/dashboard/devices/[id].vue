@@ -13,6 +13,12 @@ const { $api } = useNuxtApp()
 const device = ref<any>(null)
 
 
+ 
+const url = `https://app.scalefusion.com/cloud/dashboard/remote_mirror/${id}`
+
+const open = () => window.open(url, '_blank', 'noopener,noreferrer')
+
+
 const RebootDevice = async () => {
   try {
     await $api.post('/api/scalefusion/device/reboot', {
@@ -295,6 +301,16 @@ onMounted(async () => {
             </div>
           </div>
         </div>
+      </div>
+
+
+      <div class="col-lg-12">
+
+
+         <button class="btn btn-primary" @click="open">
+    Open Scalefusion Remote Mirror
+  </button>
+
       </div>
     </div>
   </div>

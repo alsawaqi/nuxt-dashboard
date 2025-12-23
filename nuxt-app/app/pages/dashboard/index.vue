@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, nextTick } from 'vue'
+import { ref, onMounted, computed, nextTick ,watch} from 'vue'
 import type { ApexOptions } from 'apexcharts'
 import { useAuthStore } from '~/stores/auth'
 definePageMeta({
@@ -9,11 +9,32 @@ definePageMeta({
 const { $api, $google } = useNuxtApp()
 
 
+const lastUpdatedAt = ref<Date | null>(null)
+
+const fmtNum = (v: any, d = 0) =>
+  new Intl.NumberFormat('en-GB', { minimumFractionDigits: d, maximumFractionDigits: d })
+    .format(Number(v || 0))
+
+const fmtOMR = (v: any) => `${fmtNum(v, 2)} OMR`
+
+const fmtDateTime = (v: any) =>
+  new Date(v).toLocaleString('en-GB', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+
 const auth = useAuthStore()
+
+const deviceLocations = ref<string[]>([])
 
 interface DailyStat {
   date: string
-  total_amount: string | number
+  success_amount: string | number
+  failed_amount: string | number
 }
 
 
@@ -22,17 +43,128 @@ interface DailyStat {
 interface HeatmapPoint {
   lat: number
   lng: number
-  weight: number
+
+  transactions_count: number
+  total_amount: number
+
+  success_count: number
+  fail_count: number
+  success_amount: number
+  fail_amount: number
 }
 
 
+
+
+interface TopDevice {
+  device_brand_id: number
+  device_model_id: number
+  brand?: string
+  model?: string
+  label?: string              // backend can send this already
+  location_label?: string
+  total_amount: number | string
+  tx_count?: number
+}
+
+
+
+interface TopLocation {
+  charity_location_id: number
+  label: string
+  total_amount: number | string
+}
+
+
+
+interface TopBank {
+  bank_transaction_id: number | string
+  label: string
+  total_amount: number | string
+}
+
+
+const heatmapMode = ref<'amount' | 'count'>('amount') // ✅ NEW
+const showHeatmapMarkers = ref(false)                 // ✅ NEW
+const heatmapPoints = ref<HeatmapPoint[]>([])         // ✅ NEW
+const heatmapMarkers = ref<google.maps.Marker[]>([])  // ✅ NEW
+
+const topDevicesItems = ref<TopDevice[]>([])
+
+
+const clearMarkers = () => {
+  heatmapMarkers.value.forEach(m => m.setMap(null))
+  heatmapMarkers.value = []
+}
+
+const applyHeatmapData = async () => {
+  if (!heatmapLayer.value || !map.value) return
+  const google = await $google()
+
+  const data = heatmapPoints.value.map((p) => ({
+    location: new google.maps.LatLng(p.lat, p.lng),
+    weight: heatmapMode.value === 'amount'
+      ? (p.total_amount || 1)
+      : (p.transactions_count || 1),
+  }))
+
+  heatmapLayer.value.setData(data as any)
+}
+
+const applyMarkers = async () => {
+  if (!map.value) return
+  const google = await $google()
+
+  clearMarkers()
+
+  if (!showHeatmapMarkers.value) return
+
+  // show count label per hotspot
+  heatmapMarkers.value = heatmapPoints.value.map((p) => {
+    return new google.maps.Marker({
+      position: { lat: p.lat, lng: p.lng },
+      map: map.value!,
+      label: {
+        text: String(p.transactions_count),
+        fontSize: '12px',
+        fontWeight: '600',
+      },
+      title: `Total: ${p.transactions_count} | Success: ${p.success_count} | Fail: ${p.fail_count}`,
+    })
+  })
+}
 
 
 const pieColors = ['#22c55e', '#3b82f6', '#6366f1', '#ef4444', '#f97316', '#eab308']
 const loading = ref(true)
 const error = ref<string | null>(null)
 const datas = ref<any>([])
-const transactions = ref<any>([])
+const transactions = ref<any[]>([])
+
+const txPage = ref(1)
+const txPerPage = ref(10)
+
+const txMeta = ref({
+  current_page: 1,
+  last_page: 1,
+  per_page: 10,
+  total: 0,
+  from: 0,
+  to: 0,
+})
+
+  // ✅ page boot (optional global)
+const pageBooting = ref(true)
+
+// ✅ per-widget loading/errors
+const loadingDaily = ref(true)
+const errorDaily = ref<string | null>(null)
+
+const loadingTotals = ref(true)
+const errorTotals = ref<string | null>(null)
+
+const loadingTransactions = ref(true)
+const errorTransactions = ref<string | null>(null)
 
 const heatmapContainer = ref<HTMLElement | null>(null)
 
@@ -44,18 +176,12 @@ const heatmapError = ref<string | null>(null)
 
 const categories = ref<string[]>([])
 const series = ref([
-  {
-    name: 'Total Amount',
-    data: [] as number[],
-  },
+  { name: 'Success', data: [] as number[] },
+  { name: 'Failed',  data: [] as number[] },
 ])
 
+const rangeTotals = ref({ success: 0, failed: 0 }) 
 
-interface TopBank {
-  bank_transaction_id: number | string
-  label: string
-  total_amount: number | string
-}
 
 // 🔹 Top Banks (donut)
 const loadingTopBanks = ref(true)
@@ -232,55 +358,31 @@ const chartOptions = ref<ApexOptions>({
   chart: {
     type: 'line',
     height: 350,
-    toolbar: {
-      show: false,
-    },
-    zoom: {
-      enabled: false,
-    },
+    toolbar: { show: false },
+    zoom: { enabled: false },
   },
-  stroke: {
-    curve: 'smooth',
-    width: 3,
-  },
-  dataLabels: {
-    enabled: false,
-  },
+  stroke: { curve: 'smooth', width: 3 },
+  dataLabels: { enabled: false },
+  colors: ['#22c55e', '#ef4444'], // ✅ success green, fail red
   xaxis: {
     type: 'category',
-    labels: {
-      rotate: -45,
-    },
+    labels: { rotate: -45 },
   },
   yaxis: {
-    labels: {
-      formatter: (val) => val.toFixed(2),
-    },
+    labels: { formatter: (val) => val.toFixed(2) },
   },
   tooltip: {
     y: {
-      formatter: (val) => `${val.toFixed(2)}`,
+      formatter: (val: number) => `${val.toFixed(2)} OMR`,
     },
   },
-  grid: {
-    borderColor: '#e5e7eb',
-  },
-  colors: ['#4f46e5'], // optional: primary line color
+  grid: { borderColor: '#e5e7eb' },
 })
 
 
-interface TopDevice {
-  device_id: number
-  label: string
-  total_amount: number | string
-}
 
 
-interface TopLocation {
-  charity_location_id: number
-  label: string
-  total_amount: number | string
-}
+
 
 const loadingTopDevices = ref(true)
 const errorTopDevices = ref<string | null>(null)
@@ -385,9 +487,19 @@ const loadTopDevices = async () => {
     const { data } = await $api.get('/api/stats/charity/top-devices')
 
     const items = (data.data || []) as TopDevice[]
+    topDevicesItems.value = items
 
-    labels.value = items.map((item) => item.label)
+    // Build labels as: "Brand - Model"
+    labels.value = items.map((item) => {
+      if (item.label) return item.label
+      const b = item.brand || ''
+      const m = item.model || ''
+      const merged = [b, m].filter(Boolean).join(' - ')
+      return merged || '—'
+    })
+
     seriesPie.value = items.map((item) => Number(item.total_amount) || 0)
+    deviceLocations.value = items.map((item) => item.location_label || '—')
 
     chartOptionsPie.value = {
       ...chartOptionsPie.value,
@@ -402,32 +514,43 @@ const loadTopDevices = async () => {
   }
 }
 
+
 // total of all slices
+ 
+// rows for the table under the chart
 const totalPie = computed(() =>
-  seriesPie.value.reduce((sum, v) => sum + (Number(v) || 0), 0)
+  topDevicesItems.value.reduce((sum, i) => sum + (Number(i.total_amount) || 0), 0)
 )
 
-// rows for the table under the chart
 const pieRows = computed(() => {
-  if (!labels.value.length || !seriesPie.value.length || !totalPie.value) return []
+  if (!topDevicesItems.value.length || !totalPie.value) return []
 
-  return labels.value.map((label, idx) => {
-    const value = Number(seriesPie.value[idx] || 0)
+  return topDevicesItems.value.map((item, idx) => {
+    const value = Number(item.total_amount) || 0
     const percentage = totalPie.value ? (value / totalPie.value) * 100 : 0
+
+    const label =
+      item.label ||
+      [item.brand, item.model].filter(Boolean).join(' - ') ||
+      '—'
 
     return {
       label,
+      location: item.location_label || '—',
       value,
       percentage,
       color: pieColors[idx % pieColors.length],
+      tx_count: Number(item.tx_count || 0),
     }
   })
 })
 
 
+
+
 const loadData = async (): Promise<void> => {
-  loading.value = true
-  error.value = null
+  loadingDaily.value = true
+  errorDaily.value = null
 
   try {
     const { $api } = useNuxtApp()
@@ -435,23 +558,42 @@ const loadData = async (): Promise<void> => {
 
     const stats = (data.data || []) as DailyStat[]
 
-    // Map dates + totals
     categories.value = stats.map((item) => item.date)
-    if (series.value[0]) {
-      series.value[0].data = stats.map((item) => Number(item.total_amount) || 0)
+
+    // ✅ set x-axis categories
+    chartOptions.value = {
+      ...chartOptions.value,
+      xaxis: {
+        ...(chartOptions.value.xaxis as any),
+        categories: categories.value,
+      },
     }
+
+    // ✅ 2 lines: Success vs Failed
+    series.value = [
+      {
+        name: 'Success',
+        data: stats.map((item) => Number(item.success_amount) || 0),
+      },
+      {
+        name: 'Failed',
+        data: stats.map((item) => Number(item.failed_amount) || 0),
+      },
+    ]
   } catch (e: any) {
     console.error(e)
     error.value = 'Failed to load charity stats.'
   } finally {
-    loading.value = false
+    loadingDaily.value = false
+    errorDaily.value = null
   }
 }
 
 
+
 const loadTotals = async (): Promise<void> => {
-  loading.value = true
-  error.value = null
+ loadingTotals.value = true
+  errorTotals.value = null
 
   try {
     const { $api } = useNuxtApp()
@@ -463,34 +605,36 @@ const loadTotals = async (): Promise<void> => {
     console.error(e)
     error.value = 'Failed to load charity stats.'
   } finally {
-    loading.value = false
+    loadingTotals.value = false
+    errorTotals.value = null
   }
 }
 
 
 
 const loadTransactions = async (): Promise<void> => {
-  loading.value = true
-  error.value = null
+  loadingTransactions.value = true
+  errorTransactions.value = null
 
   try {
     const { $api } = useNuxtApp()
-    const { data } = await $api.get('/api/donations')
+    const { data } = await $api.get('/api/donations', {
+      params: {
+        page: txPage.value,
+        per_page: txPerPage.value,
+      },
+    })
 
-    transactions.value = data.data
-
-    console.log('Loaded transactions:', data.data)
-
+    transactions.value = data.data || []
+    txMeta.value = data.meta || txMeta.value
   } catch (e: any) {
     console.error(e)
-    error.value = 'Failed to load charity stats.'
+    errorTransactions.value = 'Failed to load transactions.'
   } finally {
-    loading.value = false
+    loadingTransactions.value = false
   }
-
-
-
 }
+
 
 const loadTopBanks = async () => {
   loadingTopBanks.value = true
@@ -520,10 +664,19 @@ const loadTopBanks = async () => {
 
 
 const fetchHeatmapData = async (): Promise<HeatmapPoint[]> => {
-  const { data } = await $api.get('/api/stats/charity/heatmap')
-  console.log('Heatmap data:', data)
+  const { data } = await $api.get('/api/stats/charity/heatmap') // default ALL
   return (data.data || []) as HeatmapPoint[]
 }
+
+
+
+watch(txPerPage, () => {
+  txPage.value = 1
+  loadTransactions()
+})
+watch(txPage, () => {
+  loadTransactions()
+})
 
 
 const initHeatmap = async () => {
@@ -546,40 +699,39 @@ const initHeatmap = async () => {
     const { HeatmapLayer } =
       (await google.maps.importLibrary('visualization')) as google.maps.VisualizationLibrary
 
-    const points = await fetchHeatmapData()
-    console.log('Heatmap points:', points)
+      const points = await fetchHeatmapData()
+heatmapPoints.value = points
 
-    if (!points.length) {
-      heatmapError.value = 'No payment data available for the selected period.'
-      return
-    }
+if (!points.length) {
+  heatmapError.value = 'No payment data available for the selected period.'
+  return
+}
 
-    const first = points[0]
+const first = points[0]
+if (!first) {
+  heatmapError.value = 'No valid payment data available.'
+  return
+}
 
-    if (!first) {
-      heatmapError.value = 'No valid payment data available.'
-      return
-    }
+map.value = new Map(heatmapContainer.value, {
+  center: { lat: first.lat, lng: first.lng },
+  zoom: 13,
+  mapTypeControl: false,
+  streetViewControl: false,
+  fullscreenControl: true,
+})
 
-    map.value = new Map(heatmapContainer.value, {
-      center: { lat: first.lat, lng: first.lng },
-      zoom: 13,
-      mapTypeControl: false,
-      streetViewControl: false,
-      fullscreenControl: true,
-    })
+heatmapLayer.value = new HeatmapLayer({
+  data: [], // we’ll set it using applyHeatmapData()
+  map: map.value,
+  radius: 30,
+  opacity: 0.7,
+})
 
-    const heatmapData = points.map((p) => ({
-      location: new google.maps.LatLng(p.lat, p.lng),
-      weight: p.weight ?? 1,
-    }))
+await applyHeatmapData()
+await applyMarkers()
 
-    heatmapLayer.value = new HeatmapLayer({
-      data: heatmapData as any,
-      map: map.value,
-      radius: 30,
-      opacity: 0.7,
-    })
+ 
   } catch (err) {
     console.error(err)
     heatmapError.value = 'Failed to load payment heatmap.'
@@ -589,15 +741,37 @@ const initHeatmap = async () => {
 }
 
 
-onMounted(async () => {
-  await loadData()
-  await loadTotals()
-  await loadTransactions()
-  await initHeatmap()
+watch(heatmapMode, async () => {
+  await applyHeatmapData()
+})
 
-  await loadTopDevices()
-  await loadTopLocations()
-  await loadTopBanks()
+watch(showHeatmapMarkers, async () => {
+  await applyMarkers()
+})
+
+
+const refreshAll = async () => {
+  pageBooting.value = true
+
+  const tasks = [
+    loadData(),
+    loadTotals(),
+    loadTransactions(),
+    initHeatmap(),
+    loadTopDevices(),
+    loadTopLocations(),
+    loadTopBanks(),
+  ]
+
+  await Promise.allSettled(tasks)
+
+  lastUpdatedAt.value = new Date()
+  pageBooting.value = false
+}
+
+
+onMounted(async () => {
+ await refreshAll()
 
 
 });
@@ -605,121 +779,164 @@ onMounted(async () => {
 
 
 </script>
-<template>
+ <template>
+  <div class="dashboard-main-body dash-wrap" v-if="auth.user?.id == 1">
 
-  <div class="dashboard-main-body" v-if="auth.user?.id == 1">
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
-      <h6 class="fw-semibold mb-0">Dashboard</h6>
-      <ul class="d-flex align-items-center gap-2">
-        <li class="fw-medium">
-          <NuxtLink to="/dashboard" class="d-flex align-items-center gap-1 hover-text-primary">
-            <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg"></iconify-icon>
-            Dashboard
-          </NuxtLink>
-        </li>
+    <!-- Header -->
+    <div class="dash-header">
+      <div class="dash-header-left">
+        <div class="dash-title-row">
+          <h5 class="dash-title">Dashboard</h5>
+          <span class="dash-badge">
+            <iconify-icon icon="mdi:chart-areaspline" class="me-1"></iconify-icon>
+            Charity Analytics
+          </span>
+        </div>
 
-
-      </ul>
-    </div>
-
-    <div class="row row-cols-xxxl-5 row-cols-lg-3 row-cols-sm-2 row-cols-1 gy-4">
-      <!-- Total Charities -->
-      <div class="col">
-        <div class="card shadow-none border bg-gradient-start-1 h-100">
-          <div class="card-body p-20">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-              <div>
-                <p class="fw-medium text-primary-light mb-1">Donations</p>
-                <p class="mb-0">{{ datas.total_transactions }}</p>
-              </div>
-              <div class="w-50-px h-50-px bg-cyan rounded-circle d-flex justify-content-center align-items-center">
-                <!-- Hand + heart for charities -->
-                <iconify-icon icon="mdi:hand-heart-outline" class="text-white text-2xl mb-0"></iconify-icon>
-              </div>
-            </div>
-          </div>
+        <div class="dash-sub">
+          <span class="text-muted">
+            <iconify-icon icon="mdi:clock-outline" class="me-1"></iconify-icon>
+            Last updated:
+            <b>{{ lastUpdatedAt ? fmtDateTime(lastUpdatedAt) : '—' }}</b>
+          </span>
         </div>
       </div>
 
-      <!-- Total Charities Amount -->
-      <div class="col">
-        <div class="card shadow-none border bg-gradient-start-2 h-100">
-          <div class="card-body p-20">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-              <div>
-                <p class="fw-medium text-primary-light mb-1">Total Amount</p>
-                <p class="mb-0">{{ datas.total_amount }} OMR</p>
-              </div>
-              <div class="w-50-px h-50-px bg-purple rounded-circle d-flex justify-content-center align-items-center">
-                <!-- Coin in hand = money donated -->
-                <iconify-icon icon="mdi:hand-coin-outline" class="text-white text-2xl mb-0"></iconify-icon>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div class="dash-header-right">
+        <NuxtLink to="/dashboard" class="btn btn-sm btn-light dash-btn">
+          <iconify-icon icon="solar:home-smile-angle-outline" class="me-1"></iconify-icon>
+          Home
+        </NuxtLink>
 
-      <!-- Total Devices -->
-      <div class="col">
-        <div class="card shadow-none border bg-gradient-start-3 h-100">
-          <div class="card-body p-20">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-              <div>
-                <p class="fw-medium text-primary-light mb-1">Total Devices</p>
-                <p class="mb-0">{{ datas.total_devices }}</p>
-              </div>
-              <div class="w-50-px h-50-px bg-info rounded-circle d-flex justify-content-center align-items-center">
-                <!-- Devices instead of people -->
-                <iconify-icon icon="mdi:devices" class="text-white text-2xl mb-0"></iconify-icon>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Total Charity Locations -->
-      <div class="col">
-        <div class="card shadow-none border bg-gradient-start-4 h-100">
-          <div class="card-body p-20">
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
-              <div>
-                <p class="fw-medium text-primary-light mb-1">Total Locations</p>
-                <p class="mb-0">{{ datas.total_locations }}</p>
-              </div>
-              <div
-                class="w-50-px h-50-px bg-success-main rounded-circle d-flex justify-content-center align-items-center">
-                <!-- Map marker for locations -->
-                <iconify-icon icon="mdi:map-marker-radius-outline" class="text-white text-2xl mb-0"></iconify-icon>
-              </div>
-            </div>
-          </div>
-        </div>
+        <button class="btn btn-sm btn-primary dash-btn" @click="refreshAll" :disabled="pageBooting">
+          <span v-if="pageBooting" class="d-inline-flex align-items-center gap-2">
+            <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+            Refreshing
+          </span>
+          <span v-else class="d-inline-flex align-items-center gap-2">
+            <iconify-icon icon="mdi:refresh" />
+            Refresh
+          </span>
+        </button>
       </div>
     </div>
 
-
-    <div class="row gy-4 mt-1">
-      <div class="col-xxl-6 col-xl-12">
-        <div class="card h-100">
+    <!-- KPI row -->
+    <div class="row gy-3 mt-1">
+      <div class="col-xxl-3 col-lg-6">
+        <div class="card dash-card kpi-card dash-appear d1">
           <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center justify-content-between">
-              <h6 class="text-lg mb-0">Charity Statistic</h6>
+            <div class="kpi-top">
+              <div>
+                <div class="kpi-label">Successful Donations</div>
+                <div class="kpi-value">
+                  <span v-if="loadingTotals" class="skeleton sk-w-120"></span>
+                  <span v-else>{{ fmtNum(datas.total_transactions) }}</span>
+                </div>
+                <div class="kpi-sub">Count of successful donations</div>
+              </div>
+              <div class="kpi-icon bg-cyan">
+                <iconify-icon icon="mdi:hand-heart-outline" class="text-white"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-              <!-- filter select -->
+      <div class="col-xxl-3 col-lg-6">
+        <div class="card dash-card kpi-card dash-appear d2">
+          <div class="card-body">
+            <div class="kpi-top">
+              <div>
+                <div class="kpi-label">Successful Amount</div>
+                <div class="kpi-value">
+                  <span v-if="loadingTotals" class="skeleton sk-w-140"></span>
+                  <span v-else>{{ fmtOMR(datas.total_amount) }}</span>
+                </div>
+                <div class="kpi-sub">Sum of successful donations</div>
+              </div>
+              <div class="kpi-icon bg-purple">
+                <iconify-icon icon="mdi:hand-coin-outline" class="text-white"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
+      <div class="col-xxl-3 col-lg-6">
+        <div class="card dash-card kpi-card dash-appear d3">
+          <div class="card-body">
+            <div class="kpi-top">
+              <div>
+                <div class="kpi-label">Total Devices</div>
+                <div class="kpi-value">
+                  <span v-if="loadingTotals" class="skeleton sk-w-90"></span>
+                  <span v-else>{{ fmtNum(datas.total_devices) }}</span>
+                </div>
+                <div class="kpi-sub">Registered devices</div>
+              </div>
+              <div class="kpi-icon bg-info">
+                <iconify-icon icon="mdi:devices" class="text-white"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-xxl-3 col-lg-6">
+        <div class="card dash-card kpi-card dash-appear d4">
+          <div class="card-body">
+            <div class="kpi-top">
+              <div>
+                <div class="kpi-label">Total Locations</div>
+                <div class="kpi-value">
+                  <span v-if="loadingTotals" class="skeleton sk-w-90"></span>
+                  <span v-else>{{ fmtNum(datas.total_locations) }}</span>
+                </div>
+                <div class="kpi-sub">Charity locations count</div>
+              </div>
+              <div class="kpi-icon bg-success-main">
+                <iconify-icon icon="mdi:map-marker-radius-outline" class="text-white"></iconify-icon>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main grid -->
+    <div class="row gy-3 mt-1">
+
+      <!-- Line chart -->
+      <div class="col-12"">
+        <div class="card dash-card dash-appear d2">
+          <div class="card-body">
+            <div class="dash-card-head">
+              <div>
+                <h6 class="dash-card-title mb-0">Charity Statistics</h6>
+                <div class="dash-card-sub">Success vs Failed totals by day</div>
+              </div>
+
+              <div class="dash-legend">
+                <span class="legend-pill success">
+                  <span class="dot"></span> Success
+                </span>
+                <span class="legend-pill fail">
+                  <span class="dot"></span> Failed
+                </span>
+              </div>
             </div>
 
-            <div class="d-flex flex-wrap align-items-center gap-2 mt-8">
-              <!-- you can add summary badges here later -->
-            </div>
+            <div class="dash-chart-wrap">
+              <div v-if="loadingDaily" class="chart-skel">
+                <div class="skeleton sk-h-18 sk-w-220 mb-2"></div>
+                <div class="skeleton sk-h-260 sk-w-100"></div>
+              </div>
 
-            <div id="chart" class="pt-28 apexcharts-tooltip-style-1">
-              <div v-if="loading" class="text-center py-5">
-                Loading chart...
+              <div v-else-if="errorDaily" class="alert alert-warning mb-0">
+                {{ errorDaily }}
               </div>
-              <div v-else-if="error" class="text-danger py-5">
-                {{ error }}
-              </div>
+
               <ClientOnly v-else>
                 <apexchart type="line" height="320" :options="chartOptions" :series="series" />
               </ClientOnly>
@@ -727,288 +944,316 @@ onMounted(async () => {
           </div>
         </div>
       </div>
-      <div class="col-xxl-3 col-xl-12">
-        <div class="card h-100">
-          <div class="card-body">
-            <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-              <h6 class="mb-2 fw-bold text-lg mb-0">Top Locations</h6>
 
-            </div>
+      <!-- Right stack: Top Locations + Top Devices -->
+      <div class="col-12">
+        <div class="row gy-3">
 
-            <div class="mt-32">
-              <div v-if="loadingTopLocations" class="text-center py-4">
-                Loading top locations...
-              </div>
-
-              <div v-else-if="errorTopLocations" class="text-danger py-4">
-                {{ errorTopLocations }}
-              </div>
-
-              <ClientOnly v-else>
-                <!-- Donut chart -->
-                <div class="d-flex justify-content-center mb-3">
-                  <apexchart type="donut" height="260" :options="chartOptionsPieLocations"
-                    :series="seriesPieLocations" />
+          <!-- Top Locations -->
+          <div class="col-xxl-6 col-xl-6 col-12">
+            <div class="card dash-card dash-appear d3">
+              <div class="card-body">
+                <div class="dash-card-head">
+                  <div>
+                    <h6 class="dash-card-title mb-0">Top Locations</h6>
+                    <div class="dash-card-sub">Success amount share</div>
+                  </div>
                 </div>
 
-                <!-- Legend table like your devices donut -->
-                <div class="mt-3">
-                  <table class="table table-sm align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th>Location</th>
-                        <th class="text-end">Value</th>
-                        <th class="text-end">%</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="row in pieRowsLocations" :key="row.label">
-                        <td>
-                          <span class="me-2 rounded-circle d-inline-block" :style="{
-                            width: '10px',
-                            height: '10px',
-                            backgroundColor: row.color,
-                          }"></span>
-                          {{ row.label }}
-                        </td>
-                        <td class="text-end">{{ row.value.toFixed(2) }}</td>
-                        <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </ClientOnly>
-            </div>
-
-
-          </div>
-        </div>
-      </div>
-
-
-      <div class="col-xxl-3 col-xl-12">
-        <div class="card h-100">
-          <div class="card-body">
-            <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-              <h6 class="mb-2 fw-bold text-lg mb-0">Top Devices</h6>
-
-            </div>
-
-            <div class="mt-32">
-              <div v-if="loadingTopDevices" class="text-center py-4">
-                Loading top devices...
-              </div>
-
-              <div v-else-if="errorTopDevices" class="text-danger py-4">
-                {{ errorTopDevices }}
-              </div>
-
-              <ClientOnly v-else>
-                <!-- Donut chart -->
-                <div class="d-flex justify-content-center mb-3">
-                  <apexchart type="donut" height="260" :options="chartOptionsPie" :series="seriesPie" />
+                <div v-if="loadingTopLocations" class="chart-skel">
+                  <div class="skeleton sk-h-180 sk-w-100 mb-2"></div>
+                  <div class="skeleton sk-h-14 sk-w-100 mb-1"></div>
+                  <div class="skeleton sk-h-14 sk-w-80 mb-1"></div>
+                  <div class="skeleton sk-h-14 sk-w-90"></div>
                 </div>
 
-                <!-- Legend table (like your screenshot) -->
-                <div class="mt-3">
-                  <table class="table table-sm align-middle mb-0">
-                    <thead>
-                      <tr>
-                        <th>Label</th>
-                        <th class="text-end">Value</th>
-                        <th class="text-end">%</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr v-for="row in pieRows" :key="row.label">
-                        <td>
-                          <span class="me-2 rounded-circle d-inline-block" :style="{
-                            width: '10px',
-                            height: '10px',
-                            backgroundColor: row.color,
-                          }"></span>
-                          {{ row.label }}
-                        </td>
-                        <td class="text-end">{{ row.value.toFixed(2) }}</td>
-                        <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </ClientOnly>
-            </div>
-          </div>
-        </div>
-      </div>
-
-
-
-      <div class="card radius-16 mt-24">
-        <div class="card-header">
-          <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-            <h6 class="mb-2 fw-bold text-lg mb-0">Charity Heatmap</h6>
-          </div>
-        </div>
-
-        <div class="card-body">
-          <ClientOnly>
-            <div class="position-relative">
-              <!-- The map container: ALWAYS rendered -->
-              <div ref="heatmapContainer" class="heatmap-map-wrapper"></div>
-
-              <!-- Loading overlay -->
-              <div v-if="heatmapLoading" class="heatmap-overlay d-flex align-items-center justify-content-center">
-                <span class="text-muted">Loading payment heatmap...</span>
-              </div>
-
-              <!-- Error message (below the map) -->
-              <div v-if="heatmapError" class="alert alert-warning mt-2 mb-0">
-                {{ heatmapError }}
-              </div>
-            </div>
-          </ClientOnly>
-        </div>
-      </div>
-
-
-
-
-
-
-      <div class="col-xxl-9 col-xl-12">
-        <div class="card h-100">
-          <div class="card-body p-24">
-
-            <div class="d-flex flex-wrap align-items-center gap-1 justify-content-between mb-16">
-              <ul class="nav border-gradient-tab nav-pills mb-0" id="pills-tab" role="tablist">
-                <li class="nav-item" role="presentation">
-                  <button class="nav-link d-flex align-items-center active" id="pills-to-do-list-tab"
-                    data-bs-toggle="pill" data-bs-target="#pills-to-do-list" type="button" role="tab"
-                    aria-controls="pills-to-do-list" aria-selected="true">
-                    Latest Charities
-                    <span
-                      class="text-sm fw-semibold py-6 px-12 bg-neutral-500 rounded-pill text-white line-height-1 ms-12 notification-alert">{{
-                        transactions.length }}</span>
-                  </button>
-                </li>
-
-              </ul>
-
-            </div>
-
-            <div class="tab-content" id="pills-tabContent">
-              <div class="tab-pane fade show active" id="pills-to-do-list" role="tabpanel"
-                aria-labelledby="pills-to-do-list-tab" tabindex="0">
-                <div class="table-responsive scroll-sm">
-
-
-                  <table class="table bordered-table sm-table mb-0">
-                    <thead>
-                      <tr>
-                        <th scope="col">#</th>
-                        <th scope="col">Device Name</th>
-                        <th scope="col">Bank</th>
-                        <th scope="col">Amount</th>
-                        <th scope="col" class="text-center">Locations</th>
-                        <th scope="col">Date</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-
-
-                      <tr v-for="(transaction, index) in transactions" :key="transaction.id">
-
-
-                        <td>
-                          {{ index + 1 }}
-                        </td>
-                        <td>{{ transaction.device?.devicemodel?.name }}</td>
-                        <td>{{ transaction.bank?.name }}</td>
-                        <td>{{ transaction.total_amount }}</td>
-                        <td class="text-center">
-                        {{ transaction.charity_location?.main_location?.name }} - {{ transaction.charity_location?.name }}
-                        </td>
-                        <td>
-                          {{
-                            new Date(transaction.created_at).toLocaleString('en-GB', {
-                              year: 'numeric',
-                              month: '2-digit',
-                              day: '2-digit',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                              second: '2-digit',
-                            })
-                          }}
-                        </td>
-                      </tr>
-
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="col-xxl-3 col-xl-12">
-        <div class="card h-100">
-          <div class="card-body">
-            <div class="d-flex align-items-center flex-wrap gap-2 justify-content-between">
-              <h6 class="mb-2 fw-bold text-lg mb-0">Top Banks (Working Progress)</h6>
-
-            </div>
-
-            <div class="mt-32">
-
-              <div class="mt-32">
-                <div v-if="loadingTopBanks" class="text-center py-4">
-                  Loading top banks...
-                </div>
-
-                <div v-else-if="errorTopBanks" class="text-danger py-4">
-                  {{ errorTopBanks }}
+                <div v-else-if="errorTopLocations" class="alert alert-warning mb-0">
+                  {{ errorTopLocations }}
                 </div>
 
                 <ClientOnly v-else>
-                  <!-- Donut chart -->
-                  <div class="d-flex justify-content-center mb-3">
-                    <apexchart type="donut" height="260" :options="chartOptionsPieBanks" :series="seriesPieBanks" />
+                  <div class="donut-row">
+                    <apexchart type="donut" height="230" :options="chartOptionsPieLocations" :series="seriesPieLocations" />
                   </div>
 
-                  <!-- Legend table -->
-                  <div class="mt-3">
-                    <table class="table table-sm align-middle mb-0">
-                      <thead>
-                        <tr>
-                          <th>Bank</th>
-                          <th class="text-end">Value</th>
-                          <th class="text-end">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr v-for="row in pieRowsBanks" :key="row.label">
-                          <td>
-                            <span class="me-2 rounded-circle d-inline-block" :style="{
-                              width: '10px',
-                              height: '10px',
-                              backgroundColor: row.color,
-                            }"></span>
-                            {{ row.label }}
-                          </td>
-                          <td class="text-end">{{ row.value.toFixed(2) }}</td>
-                          <td class="text-end">{{ row.percentage.toFixed(1) }}%</td>
-                        </tr>
-                      </tbody>
-                    </table>
+                  <div class="legend-list">
+                    <div class="legend-item" v-for="row in pieRowsLocations" :key="row.label">
+                      <div class="legend-left">
+                        <span class="dot" :style="{ backgroundColor: row.color }"></span>
+                        <div class="legend-text">
+                          <div class="legend-title">{{ row.label }}</div>
+                          <div class="legend-sub">{{ row.percentage.toFixed(1) }}%</div>
+                        </div>
+                      </div>
+
+                      <div class="legend-right">
+                        <div class="legend-value">{{ fmtOMR(row.value) }}</div>
+                        <div class="bar">
+                          <div class="bar-fill" :style="{ width: `${row.percentage}%`, backgroundColor: row.color }"></div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </ClientOnly>
               </div>
-
-
-
-
             </div>
+          </div>
+
+          <!-- Top Devices -->
+          <div class="col-xxl-6 col-xl-6 col-12">
+            <div class="card dash-card dash-appear d4">
+              <div class="card-body">
+                <div class="dash-card-head">
+                  <div>
+                    <h6 class="dash-card-title mb-0">Top Devices</h6>
+                    <div class="dash-card-sub">Device + top contributing location</div>
+                  </div>
+                </div>
+
+                <div v-if="loadingTopDevices" class="chart-skel">
+                  <div class="skeleton sk-h-180 sk-w-100 mb-2"></div>
+                  <div class="skeleton sk-h-14 sk-w-100 mb-1"></div>
+                  <div class="skeleton sk-h-14 sk-w-80 mb-1"></div>
+                  <div class="skeleton sk-h-14 sk-w-90"></div>
+                </div>
+
+                <div v-else-if="errorTopDevices" class="alert alert-warning mb-0">
+                  {{ errorTopDevices }}
+                </div>
+
+                <ClientOnly v-else>
+                  <div class="donut-row">
+                    <apexchart type="donut" height="230" :options="chartOptionsPie" :series="seriesPie" />
+                  </div>
+
+                  <div class="legend-list">
+                    <div class="legend-item" v-for="row in pieRows" :key="row.label">
+                      <div class="legend-left">
+                        <span class="dot" :style="{ backgroundColor: row.color }"></span>
+                        <div class="legend-text">
+                          <div class="legend-title">{{ row.label }}</div>
+                          <!-- <div class="legend-sub">{{ row.location }}</div> -->
+                        </div>
+                      </div>
+
+                      <div class="legend-right">
+                        <div class="legend-value">{{ fmtOMR(row.value) }}</div>
+                        <div class="bar">
+                          <div class="bar-fill" :style="{ width: `${row.percentage}%`, backgroundColor: row.color }"></div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </ClientOnly>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Heatmap full -->
+      <div class="col-12">
+        <div class="card dash-card dash-appear d2">
+          <div class="card-body">
+            <div class="dash-card-head">
+              <div>
+                <h6 class="dash-card-title mb-0">Charity Heatmap</h6>
+                <div class="dash-card-sub">All transactions (success + fail). Toggle amount/count.</div>
+              </div>
+
+              <div class="dash-actions">
+                <select v-model="heatmapMode" class="form-select form-select-sm dash-select">
+                  <option value="amount">Heat by Amount</option>
+                  <option value="count">Heat by Count</option>
+                </select>
+
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" id="hmMarkers" v-model="showHeatmapMarkers" />
+                  <label class="form-check-label small" for="hmMarkers">Show Counts</label>
+                </div>
+              </div>
+            </div>
+
+            <ClientOnly>
+              <div class="position-relative">
+                <div ref="heatmapContainer" class="heatmap-map-wrapper"></div>
+
+                <div v-if="heatmapLoading" class="heatmap-overlay d-flex align-items-center justify-content-center">
+                  <div class="d-flex align-items-center gap-2">
+                    <span class="spinner-border spinner-border-sm"></span>
+                    <span class="text-muted">Loading heatmap…</span>
+                  </div>
+                </div>
+
+                <div v-if="heatmapError" class="alert alert-warning mt-2 mb-0">
+                  {{ heatmapError }}
+                </div>
+              </div>
+            </ClientOnly>
+          </div>
+        </div>
+      </div>
+
+      <!-- Transactions -->
+      <div class="col-xxl-8">
+        <div class="card dash-card dash-appear d3">
+          <div class="card-body">
+            <div class="dash-card-head">
+              <div>
+                <h6 class="dash-card-title mb-0">Latest Donations</h6>
+                <div class="dash-card-sub">Recent donation activity</div>
+              </div>
+
+             <span class="dash-count">
+  {{ loadingTransactions ? '…' : fmtNum(txMeta.total) }}
+</span>
+            </div>
+
+            <div v-if="loadingTransactions" class="chart-skel">
+              <div class="skeleton sk-h-16 sk-w-240 mb-2"></div>
+              <div class="skeleton sk-h-220 sk-w-100"></div>
+            </div>
+
+            <div v-else-if="errorTransactions" class="alert alert-warning mb-0">
+              {{ errorTransactions }}
+            </div>
+
+            <div v-else class="table-wrap">
+              <table class="table table-hover sm-table mb-0">
+                <thead class="table-head-sticky">
+                  <tr>
+                    <th>#</th>
+                    <th>Device</th>
+                    <th>Bank</th>
+                    <th class="text-end">Amount</th>
+                    <th>Location</th>
+                    <th>Date</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  <tr v-for="(transaction, index) in transactions" :key="transaction.id">
+                    <<td class="text-muted">{{ (txMeta.from || 1) + index }}</td>
+
+                    <td>
+                      <div class="cell-main">{{ transaction.device?.devicemodel?.name || '—' }}</div>
+                      <div class="cell-sub text-muted">{{ transaction.device?.devicebrand?.name || '' }}</div>
+                    </td>
+
+                    <td>
+                      <span class="chip">
+                        <iconify-icon icon="mdi:bank-outline" class="me-1"></iconify-icon>
+                        {{ transaction.bank?.name || '—' }}
+                      </span>
+                    </td>
+
+                    <td class="text-end fw-semibold">
+                      {{ fmtOMR(transaction.total_amount) }}
+                    </td>
+
+                    <td>
+                      <div class="cell-main">
+                        {{ transaction.charity_location?.main_location?.name || '—' }}
+                      </div>
+                      <div class="cell-sub text-muted">
+                        {{ transaction.charity_location?.name || '' }}
+                      </div>
+                    </td>
+
+                    <td class="text-muted">
+                      {{ fmtDateTime(transaction.created_at) }}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+
+            <div v-if="!loadingTransactions && !errorTransactions" class="d-flex flex-wrap gap-2 justify-content-between align-items-center mt-3">
+  <div class="text-muted small">
+    Showing <b>{{ txMeta.from || 0 }}</b>–<b>{{ txMeta.to || 0 }}</b> of <b>{{ txMeta.total || 0 }}</b>
+  </div>
+
+  <div class="d-flex align-items-center gap-2">
+    <select class="form-select form-select-sm" style="width: 110px" v-model.number="txPerPage">
+      <option :value="5">5</option>
+      <option :value="10">10</option>
+      <option :value="20">20</option>
+      <option :value="50">50</option>
+    </select>
+
+    <button class="btn btn-sm btn-light"
+      :disabled="txPage <= 1"
+      @click="txPage--">
+      Prev
+    </button>
+
+    <span class="small text-muted">
+      Page <b>{{ txMeta.current_page }}</b> / <b>{{ txMeta.last_page }}</b>
+    </span>
+
+    <button class="btn btn-sm btn-light"
+      :disabled="txPage >= txMeta.last_page"
+      @click="txPage++">
+      Next
+    </button>
+  </div>
+</div>
+
+
+            
+
+          </div>
+        </div>
+      </div>
+
+      <!-- Top Banks -->
+      <div class="col-xxl-4">
+        <div class="card dash-card dash-appear d4">
+          <div class="card-body">
+            <div class="dash-card-head">
+              <div>
+                <h6 class="dash-card-title mb-0">Top Banks</h6>
+                <div class="dash-card-sub">Success amount share</div>
+              </div>
+            </div>
+
+            <div v-if="loadingTopBanks" class="chart-skel">
+              <div class="skeleton sk-h-180 sk-w-100 mb-2"></div>
+              <div class="skeleton sk-h-14 sk-w-100 mb-1"></div>
+              <div class="skeleton sk-h-14 sk-w-80 mb-1"></div>
+              <div class="skeleton sk-h-14 sk-w-90"></div>
+            </div>
+
+            <div v-else-if="errorTopBanks" class="alert alert-warning mb-0">
+              {{ errorTopBanks }}
+            </div>
+
+            <ClientOnly v-else>
+              <div class="donut-row">
+                <apexchart type="donut" height="230" :options="chartOptionsPieBanks" :series="seriesPieBanks" />
+              </div>
+
+              <div class="legend-list">
+                <div class="legend-item" v-for="row in pieRowsBanks" :key="row.label">
+                  <div class="legend-left">
+                    <span class="dot" :style="{ backgroundColor: row.color }"></span>
+                    <div class="legend-text">
+                      <div class="legend-title">{{ row.label }}</div>
+                      <div class="legend-sub">{{ row.percentage.toFixed(1) }}%</div>
+                    </div>
+                  </div>
+
+                  <div class="legend-right">
+                    <div class="legend-value">{{ fmtOMR(row.value) }}</div>
+                    <div class="bar">
+                      <div class="bar-fill" :style="{ width: `${row.percentage}%`, backgroundColor: row.color }"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </ClientOnly>
 
           </div>
         </div>
@@ -1016,26 +1261,299 @@ onMounted(async () => {
 
     </div>
   </div>
-
-
 </template>
-
 <style scoped>
+
+.dash-wrap{
+  position: relative;
+  padding-bottom: 12px;
+}
+
+/* subtle background to reduce "empty white feel" */
+.dash-wrap::before{
+  content:"";
+  position:absolute;
+  inset: -20px -20px auto -20px;
+  height: 320px;
+  background: radial-gradient(600px 200px at 15% 20%, rgba(99,102,241,.10), transparent 60%),
+              radial-gradient(480px 180px at 70% 10%, rgba(34,197,94,.10), transparent 60%),
+              radial-gradient(520px 200px at 95% 60%, rgba(239,68,68,.08), transparent 60%);
+  pointer-events:none;
+  z-index: 0;
+  filter: blur(0px);
+}
+.dash-wrap > * { position: relative; z-index: 1; }
+
+/* Header */
+.dash-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.dash-title{ margin:0; font-weight: 700; letter-spacing: .2px; }
+.dash-title-row{ display:flex; align-items:center; gap:10px; }
+.dash-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15,23,42,.06);
+}
+.dash-sub{ margin-top: 4px; }
+.dash-header-right{ display:flex; align-items:center; gap:10px; }
+.dash-btn{ border-radius: 10px; }
+
+/* Cards */
+.dash-card{
+  border-radius: 16px;
+  border: 1px solid rgba(15,23,42,.08);
+  box-shadow: 0 10px 30px rgba(15,23,42,.06);
+  overflow: hidden;
+  transition: transform .18s ease, box-shadow .18s ease;
+}
+.dash-card:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 14px 36px rgba(15,23,42,.09);
+}
+.dash-card .card-body{
+  padding: 16px !important;
+}
+
+/* KPI */
+.kpi-card .card-body{ padding: 16px !important; }
+.kpi-top{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+}
+.kpi-label{
+  font-size: 12px;
+  color: rgba(100,116,139,1);
+  margin-bottom: 4px;
+}
+.kpi-value{
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: .2px;
+  line-height: 1.2;
+}
+.kpi-sub{
+  font-size: 12px;
+  color: rgba(100,116,139,1);
+  margin-top: 6px;
+}
+.kpi-icon{
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.25);
+}
+.kpi-icon iconify-icon{ font-size: 22px; }
+
+/* Card headers */
+.dash-card-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.dash-card-title{ font-weight: 800; }
+.dash-card-sub{
+  font-size: 12px;
+  color: rgba(100,116,139,1);
+  margin-top: 3px;
+}
+.dash-actions{ display:flex; align-items:center; gap: 10px; }
+.dash-select{ width: 170px; border-radius: 10px; }
+
+/* Legends */
+.dash-legend{ display:flex; align-items:center; gap: 8px; }
+.legend-pill{
+  display:inline-flex;
+  align-items:center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15,23,42,.04);
+  border: 1px solid rgba(15,23,42,.06);
+}
+.legend-pill .dot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+}
+.legend-pill.success .dot{ background: #22c55e; }
+.legend-pill.fail .dot{ background: #ef4444; }
+
+/* Donut + list */
+.donut-row{
+  display:flex;
+  justify-content:center;
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.legend-list{
+  display:flex;
+  flex-direction:column;
+  gap: 10px;
+  max-height: 260px;
+  overflow:auto;
+  padding-right: 6px;
+}
+.legend-item{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap: 12px;
+}
+.legend-left{
+  display:flex;
+  align-items:flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.legend-left .dot{
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 5px;
+}
+.legend-text{ min-width: 0; }
+.legend-title{
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 210px;
+}
+.legend-sub{
+  font-size: 12px;
+  color: rgba(100,116,139,1);
+}
+.legend-right{
+  min-width: 140px;
+  text-align: right;
+}
+.legend-value{
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 6px;
+}
+.bar{
+  height: 6px;
+  background: rgba(15,23,42,.08);
+  border-radius: 999px;
+  overflow:hidden;
+}
+.bar-fill{ height: 100%; border-radius: 999px; }
+
+/* Table */
+.table-wrap{
+  max-height: 420px;
+  overflow:auto;
+  border-radius: 14px;
+  border: 1px solid rgba(15,23,42,.06);
+}
+.table-head-sticky{
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 2;
+}
+.cell-main{ font-weight: 700; }
+.cell-sub{ font-size: 12px; margin-top: 2px; }
+.chip{
+  display:inline-flex;
+  align-items:center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(15,23,42,.04);
+  border: 1px solid rgba(15,23,42,.06);
+}
+
+/* Count badge */
+.dash-count{
+  font-weight: 800;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(15,23,42,.06);
+}
+
+/* Heatmap */
 .heatmap-map-wrapper {
   width: 100%;
   height: 380px;
-  /* adjust as needed */
   border-radius: 16px;
   overflow: hidden;
   position: relative;
+  border: 1px solid rgba(15,23,42,.08);
 }
-
-/* Overlay to show loading on top of the map area */
 .heatmap-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.72);
   z-index: 10;
   font-size: 0.9rem;
 }
+
+/* Skeleton */
+.skeleton{
+  position: relative;
+  display:inline-block;
+  border-radius: 10px;
+  background: rgba(15,23,42,.08);
+  overflow:hidden;
+}
+.skeleton::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.55), transparent);
+  animation: shimmer 1.2s infinite;
+}
+@keyframes shimmer{
+  100%{ transform: translateX(100%); }
+}
+.sk-w-120{ width: 120px; height: 18px; }
+.sk-w-140{ width: 140px; height: 18px; }
+.sk-w-90{ width: 90px; height: 18px; }
+.sk-w-100{ width: 100%; }
+.sk-w-220{ width: 220px; height: 18px; }
+.sk-h-14{ height: 14px; }
+.sk-h-16{ height: 16px; }
+.sk-h-18{ height: 18px; }
+.sk-h-180{ height: 180px; }
+.sk-h-220{ height: 220px; }
+.sk-h-260{ height: 260px; }
+
+/* Entrance animations (staggered) */
+.dash-appear{
+  animation: fadeUp .45s ease both;
+}
+.d1{ animation-delay: .02s; }
+.d2{ animation-delay: .06s; }
+.d3{ animation-delay: .10s; }
+.d4{ animation-delay: .14s; }
+
+@keyframes fadeUp{
+  from{ opacity: 0; transform: translateY(10px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+
+
 </style>
+

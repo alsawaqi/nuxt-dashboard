@@ -23,12 +23,14 @@ interface MainLocation {
   district_id: number | null
   city_id: number | null
   organization_id: number | null
+    company_id: number | null   
 
   country?: Option | null
   region?: Option | null
   district?: Option | null
   city?: Option | null
   organization?: Option | null
+    company?: Option | null  
 }
 
 interface CreateForm {
@@ -37,6 +39,7 @@ interface CreateForm {
   district_id: number | null
   city_id: number | null
   organization_id: number | null
+   company_id: number | null
   name: string
 }
 
@@ -63,6 +66,7 @@ const createForm = reactive<CreateForm>({
   district_id: null,
   city_id: null,
   organization_id: null,
+  company_id: null,
   name: '',
 })
 
@@ -73,6 +77,7 @@ const editForm = reactive<EditForm>({
   district_id: null,
   city_id: null,
   organization_id: null,
+  company_id: null,
   name: '',
 })
 
@@ -94,6 +99,18 @@ const pagination = ref({
   to: 0,
   last_page: 1,
 })
+
+
+const companies = ref<Option[]>([])
+
+const fetchCompanies = async () => {
+  try {
+    const { data } = await $api.get('/api/companies/list')
+    companies.value = data
+  } catch (error) {
+    console.error('Error fetching companies:', error)
+  }
+}
 
 // ---- API helpers ----
 const fetchOrganizations = async () => {
@@ -219,19 +236,21 @@ const handleCreate = async (e: Event) => {
 
   try {
     await $api.post('/api/main-locations', {
-      country_id: createForm.country_id,
-      region_id: createForm.region_id,
-      district_id: createForm.district_id,
-      city_id: createForm.city_id,
-      organization_id: createForm.organization_id,
-      name: createForm.name,
-    })
+          country_id: createForm.country_id,
+          region_id: createForm.region_id,
+          district_id: createForm.district_id,
+          city_id: createForm.city_id,
+          organization_id: createForm.organization_id,
+          company_id: createForm.company_id,   // ✅ add
+          name: createForm.name,
+})
 
     // reset form
     createForm.country_id = null
     createForm.region_id = null
     createForm.district_id = null
     createForm.city_id = null
+    createForm.company_id = null
     createForm.organization_id = null
     createForm.name = ''
     regionsForCreate.value = []
@@ -258,6 +277,7 @@ const openEditModal = async (loc: MainLocation) => {
   editForm.district_id = loc.district_id
   editForm.city_id = loc.city_id
   editForm.organization_id = loc.organization_id
+  editForm.company_id = loc.company_id
 
   regionsForEdit.value = []
   districtsForEdit.value = []
@@ -288,14 +308,15 @@ const handleUpdate = async (e: Event) => {
   isSubmit.value = true
 
   try {
-    await $api.put(`/api/main-locations/${editForm.id}`, {
-      country_id: editForm.country_id,
-      region_id: editForm.region_id,
-      district_id: editForm.district_id,
-      city_id: editForm.city_id,
-      organization_id: editForm.organization_id,
-      name: editForm.name,
-    })
+   await $api.put(`/api/main-locations/${editForm.id}`, {
+  country_id: editForm.country_id,
+  region_id: editForm.region_id,
+  district_id: editForm.district_id,
+  city_id: editForm.city_id,
+  organization_id: editForm.organization_id,
+  company_id: editForm.company_id,     // ✅ add
+  name: editForm.name,
+})
 
     await fetchMainLocations()
     isToggle.value = false
@@ -432,6 +453,7 @@ onMounted(async () => {
     fetchOrganizations(),
     fetchCountries(),
     fetchMainLocations(),
+     fetchCompanies(),  
   ])
 })
 </script>
@@ -563,6 +585,19 @@ onMounted(async () => {
                 </select>
               </div>
 
+
+              <div class="mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    Company
+  </label>
+  <select v-model="createForm.company_id" class="form-select radius-8">
+    <option :value="null">No company</option>
+    <option v-for="c in companies" :key="c.id" :value="c.id">
+      {{ c.name }}
+    </option>
+  </select>
+</div>
+
               <!-- Name -->
               <div class="mb-20">
                 <label class="form-label fw-semibold text-primary-light text-sm mb-8">
@@ -653,6 +688,8 @@ onMounted(async () => {
           <thead>
             <tr>
               <th scope="col">S.L</th>
+              <th scope="col">Company</th>
+
               <th scope="col" @click="toggleSort('name')" style="cursor:pointer">
                 Main Location
                 <iconify-icon
@@ -664,11 +701,13 @@ onMounted(async () => {
                   icon="mdi:arrow-down"
                 />
               </th>
+
               <th scope="col">Organization</th>
               <th scope="col">Country</th>
               <th scope="col">Region</th>
               <th scope="col">District</th>
               <th scope="col">City</th>
+              
               <th scope="col">Action</th>
             </tr>
           </thead>
@@ -676,14 +715,25 @@ onMounted(async () => {
           <tbody>
             <tr v-for="(loc, index) in mainLocations" :key="loc.id">
               <td>{{ index + 1 }}</td>
+                <td>
+                  {{ loc.company?.name ?? '—' }}
+                </td>
+
+                   
               <td>
                 <h6 class="text-md mb-0 fw-medium">
                   {{ loc.name }}
                 </h6>
               </td>
+
+                  
+        
               <td>
                 {{ loc.organization?.name ?? '—' }}
               </td>
+
+
+         
               <td>
                 {{ loc.country?.name ?? '—' }}
               </td>
@@ -889,6 +939,17 @@ onMounted(async () => {
                 </option>
               </select>
             </div>
+
+
+            <div class="mb-3">
+  <label class="form-label fw-semibold text-sm">Company</label>
+  <select v-model="editForm.company_id" class="form-select radius-8">
+    <option :value="null">No company</option>
+    <option v-for="c in companies" :key="c.id" :value="c.id">
+      {{ c.name }}
+    </option>
+  </select>
+</div>
 
             <!-- Name -->
             <div class="mb-3">
