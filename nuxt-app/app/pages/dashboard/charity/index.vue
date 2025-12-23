@@ -46,16 +46,29 @@ const animSuccessCount = ref(0)
 const animFailedCount = ref(0)
 
 const tween = (to: number, setter: (v: number) => void, ms = 600) => {
+  // ✅ SSR guard
+  if (process.server) {
+    setter(to)
+    return
+  }
+
   const from = 0
-  const start = performance.now()
+  const start = window.performance.now()
+
+  const raf =
+    window.requestAnimationFrame ||
+    ((cb: FrameRequestCallback) => window.setTimeout(() => cb(window.performance.now()), 16) as any)
+
   const step = (t: number) => {
     const p = Math.min(1, (t - start) / ms)
     const eased = 1 - Math.pow(1 - p, 3) // easeOutCubic
     setter(from + (to - from) * eased)
-    if (p < 1) requestAnimationFrame(step)
+    if (p < 1) raf(step)
   }
-  requestAnimationFrame(step)
+
+  raf(step)
 }
+
 
 watch(
   [totalSuccessAmount, totalFailedAmount, totalSuccessCount, totalFailedCount],
@@ -223,6 +236,28 @@ const changeRange = (range: RangeKey) => {
 
 
 onMounted(loadTransactions)
+
+const mounted = ref(false)
+onMounted(() => (mounted.value = true))
+
+watch(
+  [totalSuccessAmount, totalFailedAmount, totalSuccessCount, totalFailedCount],
+  ([sa, fa, sc, fc]) => {
+    if (!mounted.value) {
+      animSuccessAmount.value = sa
+      animFailedAmount.value = fa
+      animSuccessCount.value = sc
+      animFailedCount.value = fc
+      return
+    }
+
+    tween(sa, v => (animSuccessAmount.value = v))
+    tween(fa, v => (animFailedAmount.value = v))
+    tween(sc, v => (animSuccessCount.value = Math.round(v)))
+    tween(fc, v => (animFailedCount.value = Math.round(v)))
+  },
+  { immediate: true }
+)
 </script>
 
 
