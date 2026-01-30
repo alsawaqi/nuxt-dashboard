@@ -49,7 +49,7 @@ Instructions:
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'gpt-4o-mini', // cheaper & fast, you can use 'gpt-4o' too
+      model: 'gpt-4.1-mini', // cheaper & fast, you can use 'gpt-4o' too
       messages: [
         {
           role: 'system',
