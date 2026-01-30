@@ -113,6 +113,11 @@ interface DeviceForm {
 
 interface DeviceRow {
   id: number
+  companies_id?: number | null
+  company?: { id: number; name: string } | null
+  main_location_id?: number | null
+  mainLocation?: { id: number; name: string; company_id?: number | null; company?: { id: number; name: string } | null } | null
+ 
   device_brand_id?: number | null
   device_model_id?: number | null
   bank_id?: number | null
@@ -131,6 +136,12 @@ interface DeviceRow {
     scalefusion?: ScalefusionInfo | null
 }
 
+interface CompanyOption {
+  id: number
+  name: string
+}
+
+
 // ---------- State ----------
 const deviceBrands = ref<DeviceBrandOption[]>([])
 const deviceModels = ref<DeviceModelOption[]>([])
@@ -138,6 +149,7 @@ const banks = ref<BankOption[]>([])
 const countries = ref<CountryOption[]>([])
 const regions = ref<RegionOption[]>([])
 const districts = ref<DistrictOption[]>([])  // ⬅️ NEW
+const companies = ref<CompanyOption[]>([])
 
 const cities = ref<CityOption[]>([])
 const mainLocations = ref<MainLocationOption[]>([])
@@ -157,6 +169,7 @@ const table = reactive({
   sortBy: 'id',
   sortDir: 'desc' as 'asc' | 'desc',
   statusFilter: 'all' as 'all' | 'active' | 'disabled' | 'maintenance',
+  companyFilter: null as number | null, // ✅ NEW
 })
 
 const pagination = ref({
@@ -185,6 +198,9 @@ const createForm = reactive<DeviceForm>({
   status: 'active',
   installed_at: null,
 })
+
+
+
 
 // Edit form (modal)
 const editForm = reactive<DeviceForm>({
@@ -244,6 +260,12 @@ const charityLocationsForCreate = computed(() =>
   })
 )
 
+
+const sfScalefusionName = (row: DeviceRow) => {
+  return row.scalefusion?.name ?? '—'
+}
+ 
+
 const sfConnLabel = (row: DeviceRow) => {
   const s = (row.scalefusion?.connection_status || '').toLowerCase()
   if (!s) return '—'
@@ -294,6 +316,19 @@ const selectedCompanyNameForEdit = computed(() => {
   const ml = getMainLocationById(editForm.main_location_id)
   return ml?.company?.name ?? (ml?.company_id ? `#${ml.company_id}` : '—')
 })
+
+
+
+const fetchCompanies = async () => {
+  try {
+    const { data } = await $api.get('/api/companies', {
+      params: { page: 1, per_page: 9999, sortBy: 'name', sortDir: 'asc' },
+    })
+    companies.value = normalizeList(data)
+  } catch (e) {
+    console.error('Error fetching companies', e)
+  }
+}
 
 // ✅ also reset model when brand changes (you were missing this in CREATE)
 watch(() => createForm.device_brand_id, () => {
@@ -355,6 +390,9 @@ watch(() => editForm.city_id, () => {
 
 
 
+const companyLockedForCreate = computed(() => !!createForm.main_location_id)
+const companyLockedForEdit = computed(() => !!editForm.main_location_id)
+
 // ---------- Computed: filtered dropdowns (edit) ----------
 const modelsForEdit = computed(() =>
   deviceModels.value.filter(
@@ -375,21 +413,27 @@ const citiesForEdit = computed(() =>
   cities.value.filter((c) => c.district_id === editForm.district_id)
 )
 
-const mainLocationsForEdit = computed(() =>
-  mainLocations.value.filter((m) => m.city_id === editForm.city_id)
-)
+const mainLocationsForEdit = computed(() => {
+  const list = mainLocations.value.filter((m) => m.city_id === editForm.city_id)
+  const selected = mainLocations.value.find((m) => m.id === editForm.main_location_id)
+  if (selected && !list.some(x => x.id === selected.id)) list.unshift(selected)
+  return list
+})
 
-const charityLocationsForEdit = computed(() =>
-  charityLocations.value.filter((cl) => {
-    if (editForm.main_location_id) {
-      return cl.main_location_id === editForm.main_location_id
-    }
-    if (editForm.city_id) {
-      return cl.city_id === editForm.city_id
-    }
+
+const charityLocationsForEdit = computed(() => {
+  const list = charityLocations.value.filter((cl) => {
+    if (editForm.main_location_id) return cl.main_location_id === editForm.main_location_id
+    if (editForm.city_id) return cl.city_id === editForm.city_id
     return false
   })
-)
+
+  const selected = charityLocations.value.find((cl) => cl.id === editForm.charity_location_id)
+  if (selected && !list.some(x => x.id === selected.id)) list.unshift(selected)
+
+  return list
+})
+
 
 
 // ---------- Watchers: cascade resets (create) ----------
@@ -440,59 +484,7 @@ watch(
 )
 
 
-// ---------- Watchers: cascade resets (edit) ----------
-watch(
-  () => editForm.device_brand_id,
-  () => {
-    editForm.device_model_id = null
-  }
-)
 
-watch(
-  () => editForm.country_id,
-  () => {
-    editForm.region_id = null
-    editForm.district_id = null
-    editForm.city_id = null
-    editForm.main_location_id = null
-    editForm.charity_location_id = null
-  }
-)
-
-watch(
-  () => editForm.region_id,
-  () => {
-    editForm.district_id = null
-    editForm.city_id = null
-    editForm.main_location_id = null
-    editForm.charity_location_id = null
-  }
-)
-
-// NEW
-watch(
-  () => editForm.district_id,
-  () => {
-    editForm.city_id = null
-    editForm.main_location_id = null
-    editForm.charity_location_id = null
-  }
-)
-
-watch(
-  () => editForm.city_id,
-  () => {
-    editForm.main_location_id = null
-    editForm.charity_location_id = null
-  }
-)
-
-watch(
-  () => editForm.main_location_id,
-  () => {
-    editForm.charity_location_id = null
-  }
-)
 
 
 // ---------- Helpers: name lookups for table ----------
@@ -668,6 +660,11 @@ const fetchDevices = async () => {
       params.status = table.statusFilter
     }
 
+
+    if (table.companyFilter) {
+  params.companies_id = table.companyFilter
+}
+
     const { data } = await $api.get('/api/devices', { params })
 
     devices.value = data.data || []
@@ -677,6 +674,9 @@ const fetchDevices = async () => {
       to: data.to,
       last_page: data.last_page,
     }
+
+
+    console.log(data.data);
   } catch (e) {
     console.error('Error fetching devices', e)
   } finally {
@@ -758,36 +758,31 @@ const openEditModal = async (id: number) => {
     isToggle.value = true
 
     editForm.id = data.id
+
     editForm.device_brand_id = data.device_brand_id ?? null
     editForm.device_model_id = data.device_model_id ?? null
-    editForm.bank_id = data.bank_id ?? null
-    editForm.model_number = data.model_number ?? ''
 
     editForm.country_id = data.country_id ?? null
     editForm.region_id = data.region_id ?? null
-    editForm.district_id = data.district_id ?? null   // ✅ FIX
+    editForm.district_id = data.district_id ?? null
     editForm.city_id = data.city_id ?? null
 
-    editForm.main_location_id = data.main_location_id ?? null  // ✅ NEW
-    editForm.companies_id = data.companies_id ?? null          // ✅ NEW
+    // prefer API main_location_id, else derive from charity_location
+    editForm.main_location_id = data.main_location_id ?? data.charity_location?.main_location_id ?? null
+
+    // set company from main location (or API)
+    const ml = getMainLocationById(editForm.main_location_id)
+    editForm.companies_id = data.companies_id ?? ml?.company_id ?? null
 
     editForm.charity_location_id = data.charity_location_id ?? null
 
+    editForm.bank_id = data.bank_id ?? null
+    editForm.model_number = data.model_number ?? ''
     editForm.commission_profile_id = data.commission_profile_id ?? null
     editForm.kiosk_id = data.kiosk_id ?? ''
     editForm.login_generated_token = data.login_generated_token ?? ''
     editForm.status = data.status ?? 'active'
     editForm.installed_at = data.installed_at ?? null
-
-    // fallback: if API didn’t return main_location_id but charity_location has it
-    if (!editForm.main_location_id && data.charity_location?.main_location_id) {
-      editForm.main_location_id = data.charity_location.main_location_id
-    }
-
-    // ensure companies_id matches selected main location
-    const ml = getMainLocationById(editForm.main_location_id)
-    if (ml?.company_id) editForm.companies_id = ml.company_id
-
   } catch (error: any) {
     console.error(error?.response || error)
     alert('Failed to load device')
@@ -796,6 +791,24 @@ const openEditModal = async (id: number) => {
     isHydratingEdit.value = false
   }
 }
+
+
+
+const getCompanyNameForRow = (row: DeviceRow) => {
+  // prefer eager-loaded company
+  if (row.company?.name) return row.company.name
+
+  // else try mainLocation.company
+  if (row.mainLocation?.company?.name) return row.mainLocation.company.name
+
+  // else fallback by companies_id
+  if (row.companies_id) {
+    return companies.value.find(c => c.id === row.companies_id)?.name ?? `#${row.companies_id}`
+  }
+
+  return '—'
+}
+
 
 
 const closeEditModal = () => {
@@ -891,6 +904,7 @@ watch(
 // ---------- Mounted ----------
 onMounted(async () => {
   await Promise.all([
+  fetchCompanies(),
     fetchDeviceBrands(),
     fetchDeviceModels(),
     fetchBanks(),
@@ -1042,11 +1056,23 @@ onMounted(async () => {
               </select>
             </div>
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Company (auto)
-              </label>
-              <input class="form-control radius-8" :value="selectedCompanyNameForCreate" disabled />
-            </div>
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    Company
+    <small class="text-muted ms-1" v-if="companyLockedForCreate">(auto from Main Location)</small>
+  </label>
+
+  <select
+    v-model="createForm.companies_id"
+    class="form-select radius-8"
+    :disabled="companyLockedForCreate"
+  >
+    <option :value="null">No company</option>
+    <option v-for="co in companies" :key="co.id" :value="co.id">
+      {{ co.name }}
+    </option>
+  </select>
+</div>
+
 
             <!-- Row 3: Charity Location / Bank / Commission / Status -->
             <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
@@ -1156,6 +1182,15 @@ onMounted(async () => {
             </select>
           </div>
 
+
+          <div class="d-flex align-items-center gap-2">
+  <span>Company</span>
+  <select v-model="table.companyFilter" class="form-select form-select-sm w-auto">
+    <option :value="null">All</option>
+    <option v-for="co in companies" :key="co.id" :value="co.id">{{ co.name }}</option>
+  </select>
+</div>
+
           <!-- Search -->
           <div class="icon-field">
             <input type="text" class="form-control form-control-sm w-auto" placeholder="Search (kiosk / model / token)"
@@ -1172,7 +1207,8 @@ onMounted(async () => {
           <span class="sr-only">Loading...</span>
         </div>
 
-        <table class="table bordered-table mb-0" v-else>
+        <div v-else class="table-responsive scroll-sm device-table-wrapper">
+          <table class="table bordered-table mb-0 w-100 device-table">
           <thead>
             <tr>
               <th scope="col">S.L</th>
@@ -1195,6 +1231,11 @@ onMounted(async () => {
               <th scope="col">
                 Commission Profile
               </th>
+
+
+              <th scope="col">Company</th>
+
+              
 
               <th scope="col" @click="toggleSort('status')" style="cursor:pointer">
                 Status
@@ -1223,6 +1264,7 @@ onMounted(async () => {
                     {{ getBrandName(row.device_brand_id) }} - {{ getModelName(row.device_model_id) }}
                   </span>
                   <small class="text-muted">
+                    Scalefusion Name: {{ sfScalefusionName(row) }} |
                     Model#: {{ row.model_number || '—' }} |
                     Kiosk: {{ row.kiosk_id || '—' }}<br>
                     Token: {{ row.login_generated_token || '—' }}
@@ -1231,34 +1273,25 @@ onMounted(async () => {
               </td>
 
               <td>
-                <small class="text-muted">
-  Model#: {{ row.model_number || '—' }} |
-  Kiosk: {{ row.kiosk_id || '—' }}<br>
-  Token: {{ row.login_generated_token || '—' }}
-</small>
+                <!-- Scalefusion quick status -->
+                <div class="d-flex flex-wrap gap-2">
+                  <span class="badge" :class="sfConnClass(row)">
+                    {{ sfConnLabel(row) }}
+                  </span>
+                  <span class="badge" :class="sfBatteryClass(row)">
+                    {{ sfBatteryText(row) }}
+                  </span>
+                  <span class="badge bg-info-subtle text-info" v-if="row.scalefusion">
+                    {{ sfChargingText(row) }}
+                  </span>
+                  <span class="badge bg-secondary-subtle text-secondary">
+                    {{ sfDeviceStatusText(row) }}
+                  </span>
+                </div>
 
-<!-- ✅ NEW: Scalefusion quick status -->
-<div class="d-flex flex-wrap gap-2 mt-2">
-  <span class="badge" :class="sfConnClass(row)">
-    {{ sfConnLabel(row) }}
-  </span>
-
-  <span class="badge" :class="sfBatteryClass(row)">
-    {{ sfBatteryText(row) }}
-  </span>
-
-  <span class="badge bg-info-subtle text-info" v-if="row.scalefusion">
-    {{ sfChargingText(row) }}
-  </span>
-
-  <span class="badge bg-secondary-subtle text-secondary">
-    {{ sfDeviceStatusText(row) }}
-  </span>
-</div>
-
-<small class="text-muted d-block mt-1" v-if="row.scalefusion?.last_seen_on || row.scalefusion?.last_connected_at">
-  Last seen: {{ row.scalefusion?.last_seen_on || row.scalefusion?.last_connected_at }}
-</small>
+                <small class="text-muted d-block mt-1" v-if="row.scalefusion?.last_seen_on || row.scalefusion?.last_connected_at">
+                  Last seen: {{ row.scalefusion?.last_seen_on || row.scalefusion?.last_connected_at }}
+                </small>
               </td>
 
               <td>
@@ -1284,6 +1317,11 @@ onMounted(async () => {
               <td>
                 {{ getCommissionProfileName(row.commission_profile_id) }}
               </td>
+
+
+              <td>
+  <span class="fw-semibold">{{ getCompanyNameForRow(row) }}</span>
+</td>
 
               <td>
                 <span class="badge" :class="{
@@ -1312,6 +1350,7 @@ onMounted(async () => {
             </tr>
           </tbody>
         </table>
+        </div>
 
         <!-- Pagination -->
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-24">
@@ -1514,6 +1553,26 @@ onMounted(async () => {
                 </select>
               </div>
 
+
+              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+  <label class="form-label fw-semibold text-sm mb-8">
+    Company
+    <small class="text-muted ms-1" v-if="companyLockedForEdit">(auto from Main Location)</small>
+  </label>
+
+  <select
+    v-model="editForm.companies_id"
+    class="form-select radius-8"
+    :disabled="companyLockedForEdit"
+  >
+    <option :value="null">No company</option>
+    <option v-for="co in companies" :key="co.id" :value="co.id">
+      {{ co.name }}
+    </option>
+  </select>
+</div>
+
+
               <!-- Status / Installed at -->
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">
@@ -1577,5 +1636,38 @@ onMounted(async () => {
   border-radius: 12px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, .18);
   padding: 20px;
+}
+
+/* Responsive table: horizontal scroll on small screens */
+.device-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 -1px; /* align with card padding for full-width scroll */
+}
+
+.device-table {
+  min-width: 1100px; /* prevent column squash; scroll on narrow viewports */
+}
+
+@media (max-width: 768px) {
+  .device-table-wrapper {
+    border-radius: 8px;
+  }
+  .device-table :deep(thead th),
+  .device-table :deep(tbody td) {
+    padding: 12px 10px !important;
+    font-size: 0.875rem;
+  }
+  .device-table :deep(thead th:first-child),
+  .device-table :deep(tbody td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--neutral-50, #f8f9fa);
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
+  }
+  .device-table :deep(tbody td:first-child) {
+    background: var(--white, #fff);
+  }
 }
 </style>

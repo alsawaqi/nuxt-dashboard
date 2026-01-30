@@ -1134,7 +1134,7 @@ onMounted(async () => {
 
                 <tbody>
                   <tr v-for="(transaction, index) in transactions" :key="transaction.id">
-                    <<td class="text-muted">{{ (txMeta.from || 1) + index }}</td>
+                    <td class="text-muted">{{ (txMeta.from || 1) + index }}</td>
 
                     <td>
                       <div class="cell-main">{{ transaction.device?.devicemodel?.name || '—' }}</div>

@@ -37,6 +37,19 @@ type ScalefusionInfo = {
 
 type DeviceRow = {
   id: number
+  country_id?: number | null
+  country?: { id: number; name: string } | null
+  region_id?: number | null
+  region?: { id: number; name: string } | null
+  district_id?: number | null
+  district?: { id: number; name: string } | null
+  city_id?: number | null
+  city?: { id: number; name: string } | null
+  main_location_id?: number | null
+  main_location?: { id: number; name: string } | null
+  charity_location_id?: number | null
+  charity_location?: { id: number; name: string } | null
+ 
   kiosk_id?: string | null
   model_number?: string | null
   status?: string | null
@@ -94,23 +107,7 @@ const inactiveDevices = computed(() =>
   totalDevices.value - activeDevices.value
 )
 
-// -------- filtered list for table (client-side) --------
-const filteredDevices = computed(() => {
-  const term = searchTerm.value.toLowerCase().trim()
-  if (!term) return rows.value
 
-  return rows.value.filter((r) => {
-    const sf = r.scalefusion || {}
-    return (
-      String(r.kiosk_id || '').toLowerCase().includes(term) ||
-      String(r.model_number || '').toLowerCase().includes(term) ||
-      String(sf.name || '').toLowerCase().includes(term) ||
-      String(sf.make || '').toLowerCase().includes(term) ||
-      String(sf.model_name || sf.model || '').toLowerCase().includes(term) ||
-      String(sf.serial_no || '').toLowerCase().includes(term)
-    )
-  })
-})
 
 // -------- LOAD DATA (DB + Scalefusion enrich) --------
 const loadDevices = async () => {
@@ -137,6 +134,9 @@ const loadDevices = async () => {
       to: res.data?.to || 0,
       last_page: res.data?.last_page || 1,
     }
+
+    console.log(res.data?.data);
+
   } catch (e: any) {
     console.error('Error fetching devices:', e)
     error.value = e?.response?.data?.error || 'Failed to load devices.'
@@ -144,6 +144,26 @@ const loadDevices = async () => {
     loading.value = false
   }
 }
+
+
+
+// -------- filtered list for table (client-side) --------
+const filteredDevices = computed(() => {
+  const term = searchTerm.value.toLowerCase().trim()
+  if (!term) return rows.value
+
+  return rows.value.filter((r) => {
+    const sf = r.scalefusion || {}
+    return (
+      String(r.kiosk_id || '').toLowerCase().includes(term) ||
+      String(r.model_number || '').toLowerCase().includes(term) ||
+      String(sf.name || '').toLowerCase().includes(term) ||
+      String(sf.make || '').toLowerCase().includes(term) ||
+      String(sf.model_name || sf.model || '').toLowerCase().includes(term) ||
+      String(sf.serial_no || '').toLowerCase().includes(term)
+    )
+  })
+})
 
 onMounted(loadDevices)
 
@@ -275,7 +295,13 @@ watch(
                 <td>
                   <div class="d-flex flex-column">
                     <span class="fw-semibold">{{ r.kiosk_id || '—' }}</span>
-                    <small class="text-muted">DB ID: {{ r.id }}</small>
+                    <small class="text-muted">City: {{ r.country?.name }}</small>
+                    <small class="text-muted">Region: {{ r.region?.name }}</small>
+                    <small class="text-muted">District: {{ r.district?.name }}</small>
+                    <small class="text-muted">City: {{ r.city?.name }}</small>
+                    <small class="text-muted">Main Location: {{ r.main_location?.name }}</small>
+                    <small class="text-muted">Charity Location: {{ r.charity_location?.name }}</small>
+                    
                   </div>
                 </td>
 

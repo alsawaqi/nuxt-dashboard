@@ -175,25 +175,27 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="dashboard-main-body">
+  <div class="dashboard-main-body activities-page">
     <!-- Header / Breadcrumb -->
-    <div class="d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
-      <h6 class="fw-semibold mb-0" style="color: #6b8629">Activities</h6>
-      <ul class="d-flex align-items-center gap-2">
-        <li class="fw-medium">
-          <a href="index.php" class="d-flex align-items-center gap-1 hover-text-primary">
-            <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg" />
-            Dashboard
-          </a>
-        </li>
-        <li>-</li>
-        <li class="fw-medium">Activities</li>
-      </ul>
+    <div class="page-header d-flex flex-wrap align-items-center justify-content-between gap-3 mb-24">
+      <h6 class="page-title fw-semibold mb-0">Activities</h6>
+      <nav class="breadcrumb-wrap" aria-label="Breadcrumb">
+        <ul class="d-flex align-items-center gap-2 flex-wrap">
+          <li class="fw-medium">
+            <a href="index.php" class="d-flex align-items-center gap-1 hover-text-primary">
+              <iconify-icon icon="solar:home-smile-angle-outline" class="icon text-lg" aria-hidden="true" />
+              <span class="breadcrumb-text">Dashboard</span>
+            </a>
+          </li>
+          <li class="breadcrumb-sep" aria-hidden="true">-</li>
+          <li class="fw-medium">Activities</li>
+        </ul>
+      </nav>
     </div>
 
     <!-- Create form -->
-    <div class="card h-100 p-0 radius-12 overflow-hidden mb-24">
-      <div class="card-body p-40">
+    <div class="card h-100 p-0 radius-12 overflow-hidden mb-24 create-form-card">
+      <div class="card-body create-form-body">
         <form @submit="createActivity">
           <div class="row">
             <div class="col-sm-12">
@@ -223,18 +225,17 @@ onMounted(() => {
               </div>
             </div>
 
-            <div class="d-flex align-items-center justify-content-center gap-3 mt-24">
+            <div class="form-actions d-flex flex-wrap align-items-center justify-content-center gap-3 mt-24">
               <button
                 type="button"
-                class="border border-danger-600 bg-hover-danger-200 text-danger-600 text-md px-40 py-11 radius-8"
+                class="btn btn-outline-danger text-md px-40 py-11 radius-8 flex-grow-1 flex-md-grow-0"
                 @click="resetCreateForm"
               >
                 Reset
               </button>
-
               <button
                 type="submit"
-                class="btn btn-primary border border-primary-600 text-md px-24 py-12 radius-8"
+                class="btn btn-primary border border-primary-600 text-md px-24 py-12 radius-8 flex-grow-1 flex-md-grow-0"
                 :disabled="isSubmit"
               >
                 <span
@@ -252,22 +253,21 @@ onMounted(() => {
     </div>
 
     <!-- Table -->
-    <div class="card">
-      <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-3">
-        <div class="d-flex flex-wrap align-items-center gap-3">
+    <div class="card table-card">
+      <div class="card-header table-toolbar d-flex flex-wrap align-items-center justify-content-between gap-3">
+        <div class="table-toolbar-inner d-flex flex-wrap align-items-center gap-3">
           <div class="d-flex align-items-center gap-2">
-            <span>Show</span>
-            <select v-model.number="table.perPage" class="form-select form-select-sm w-auto">
+            <span class="per-page-label">Show</span>
+            <select v-model.number="table.perPage" class="form-select form-select-sm per-page-select">
               <option :value="10">10</option>
               <option :value="15">15</option>
               <option :value="20">20</option>
             </select>
           </div>
-
-          <div class="icon-field">
+          <div class="icon-field search-field">
             <input
               type="text"
-              class="form-control form-control-sm w-auto"
+              class="form-control form-control-sm search-input"
               placeholder="Search"
               v-model="table.search"
             />
@@ -278,12 +278,13 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="card-body">
+      <div class="card-body table-card-body">
         <div class="spinner-border" role="status" v-if="isLoading">
           <span class="sr-only">Loading...</span>
         </div>
 
-        <table class="table bordered-table mb-0" v-else>
+        <div v-else class="table-responsive scroll-sm activities-table-wrapper">
+          <table class="table bordered-table mb-0 w-100 activities-table">
           <thead>
             <tr>
               <th scope="col">
@@ -360,21 +361,21 @@ onMounted(() => {
             </tr>
 
             <tr v-if="activities.length === 0">
-              <td colspan="5" class="text-center text-muted py-4">
+              <td :colspan="activities?.[0]?.companies_count !== undefined ? 5 : 4" class="text-center text-muted py-4">
                 No activities found.
               </td>
             </tr>
           </tbody>
         </table>
+        </div>
 
         <!-- Pagination -->
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-24">
-          <span>
+        <div class="pagination-wrap d-flex flex-wrap align-items-center justify-content-between gap-2 mt-24">
+          <span class="pagination-info text-nowrap">
             Showing {{ pagination.from || 0 }} to {{ pagination.to || 0 }} of
             {{ pagination.total || 0 }} entries
           </span>
-
-          <ul class="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center">
+          <ul class="pagination d-flex flex-wrap align-items-center gap-2 justify-content-center mb-0">
             <li class="page-item" :class="{ disabled: table.page === 1 }">
               <a
                 class="page-link text-secondary-light fw-medium radius-4 border-0 px-10 py-10 d-flex align-items-center justify-content-center h-32-px w-32-px bg-base"
@@ -422,10 +423,10 @@ onMounted(() => {
       leave-to-class="opacity-0"
     >
       <div v-if="isToggle" class="modal-backdrop" @click.self="TogglePopup()">
-        <div class="modal-card" role="dialog" aria-modal="true">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="edit-activity-title">
           <div class="d-flex align-items-center justify-content-between border-bottom pb-2 mb-3">
-            <h6 class="fw-semibold mb-0">Edit Activity</h6>
-            <button type="button" class="btn btn-sm btn-outline-secondary" @click="TogglePopup()">
+            <h6 id="edit-activity-title" class="fw-semibold mb-0">Edit Activity</h6>
+            <button type="button" class="btn btn-sm btn-outline-secondary modal-close-btn" @click="TogglePopup()" aria-label="Close">
               ✕
             </button>
           </div>
@@ -456,7 +457,7 @@ onMounted(() => {
               </label>
             </div>
 
-            <div class="d-flex align-items-center justify-content-end gap-2">
+            <div class="modal-form-actions d-flex flex-wrap align-items-center justify-content-end gap-2">
               <button type="button" class="btn btn-outline-secondary" @click="TogglePopup()">
                 Cancel
               </button>
@@ -478,6 +479,49 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* ---------- Page layout ---------- */
+.activities-page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.page-title {
+  color: #6b8629;
+}
+
+/* ---------- Create form ---------- */
+.create-form-body {
+  padding: 2rem;
+}
+
+.form-actions .btn {
+  min-width: 120px;
+}
+
+/* ---------- Table toolbar ---------- */
+.per-page-select {
+  min-width: 4.5rem;
+}
+
+.search-field {
+  min-width: 0;
+}
+
+.search-input {
+  min-width: 140px;
+}
+
+/* ---------- Pagination ---------- */
+.pagination-wrap {
+  align-items: center;
+}
+
+.pagination-info {
+  font-size: 0.875rem;
+}
+
+/* ---------- Modal ---------- */
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -485,15 +529,218 @@ onMounted(() => {
   display: grid;
   place-items: center;
   z-index: 1050;
+  padding: 1rem;
 }
 
 .modal-card {
-  width: min(640px, 92vw);
-  max-height: 90vh;
+  width: min(640px, 100%);
+  max-height: calc(90vh - 2rem);
   overflow: auto;
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
-  padding: 20px;
+  padding: 1.25rem;
+}
+
+.modal-form-actions {
+  flex-wrap: wrap;
+}
+
+/* ---------- Responsive table ---------- */
+.activities-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.activities-table {
+  min-width: 520px;
+}
+
+/* ---------- Breakpoint: tablet and down ---------- */
+@media (max-width: 991px) {
+  .create-form-body {
+    padding: 1.5rem;
+  }
+
+  .table-card-body {
+    padding: 1rem;
+  }
+}
+
+/* ---------- Breakpoint: mobile ---------- */
+@media (max-width: 768px) {
+  .activities-page {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .page-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .page-title {
+    font-size: 1.125rem;
+  }
+
+  .breadcrumb-wrap ul {
+    font-size: 0.875rem;
+  }
+
+  .create-form-card {
+    margin-bottom: 1.25rem;
+  }
+
+  .create-form-body {
+    padding: 1rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    margin-top: 1rem;
+    gap: 0.75rem;
+  }
+
+  .form-actions .btn {
+    width: 100%;
+    max-width: 100%;
+    justify-content: center;
+  }
+
+  .table-toolbar,
+  .table-toolbar-inner {
+    width: 100%;
+  }
+
+  .table-toolbar-inner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .table-toolbar-inner .d-flex.align-items-center.gap-2 {
+    justify-content: space-between;
+  }
+
+  .per-page-select {
+    flex: 1;
+    max-width: 6rem;
+  }
+
+  .search-field {
+    width: 100%;
+  }
+
+  .search-input {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .table-card-body {
+    padding: 0.75rem;
+  }
+
+  .activities-table-wrapper {
+    border-radius: 8px;
+    margin-left: -0.5rem;
+    margin-right: -0.5rem;
+    padding-left: 0.25rem;
+    padding-right: 0.25rem;
+  }
+
+  .activities-table :deep(thead th),
+  .activities-table :deep(tbody td) {
+    padding: 10px 8px !important;
+    font-size: 0.8125rem;
+  }
+
+  .activities-table :deep(thead th:first-child),
+  .activities-table :deep(tbody td:first-child) {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--neutral-50, #f8f9fa);
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
+  }
+
+  .activities-table :deep(tbody td:first-child) {
+    background: var(--white, #fff);
+  }
+
+  .pagination-wrap {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    margin-top: 1rem;
+    gap: 0.75rem;
+  }
+
+  .pagination-info {
+    order: 1;
+    font-size: 0.8125rem;
+  }
+
+  .pagination {
+    order: 2;
+  }
+
+  .pagination .page-link {
+    min-width: 2rem;
+    min-height: 2rem;
+    padding: 0.25rem;
+    font-size: 0.875rem;
+  }
+
+  .modal-backdrop {
+    padding: 0.75rem;
+    align-items: center;
+  }
+
+  .modal-card {
+    padding: 1rem;
+    max-height: calc(100vh - 1.5rem);
+  }
+
+  .modal-form-actions {
+    flex-direction: column;
+  }
+
+  .modal-form-actions .btn {
+    width: 100%;
+  }
+}
+
+/* ---------- Breakpoint: small mobile ---------- */
+@media (max-width: 480px) {
+  .page-title {
+    font-size: 1rem;
+  }
+
+  .breadcrumb-text {
+    display: none;
+  }
+
+  .breadcrumb-wrap .icon {
+    margin-right: 0;
+  }
+
+  .create-form-body {
+    padding: 0.75rem;
+  }
+
+  .table-card-body {
+    padding: 0.5rem;
+  }
+
+  .pagination {
+    gap: 0.25rem;
+  }
+
+  .pagination .page-item:not(:first-child):not(:last-child) .page-link {
+    min-width: 1.75rem;
+    min-height: 1.75rem;
+    font-size: 0.8125rem;
+  }
 }
 </style>
