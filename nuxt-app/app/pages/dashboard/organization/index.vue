@@ -19,10 +19,15 @@ interface Organization {
   primary_user?: { id: number; name: string; email: string } | null
 }
 
-interface OrgOption {
+interface Organization {
   id: number
   name: string
+  parent_id: number | null
+  is_active: boolean
+  parent?: { id: number; name: string } | null
+  primary_user?: { id: number; name: string; email: string } | null
 }
+
 
 interface NewOrganizationForm {
   parent_id: number | null
@@ -50,9 +55,11 @@ interface EditOrganizationForm {
   user_password_confirmation: string
 }
 
+interface OrgOption { id: number; name: string }
+
 // ---- State ----
 const organizations = ref<Organization[]>([])
-const orgOptions = ref<OrgOption[]>([])
+  const orgOptions = ref<OrgOption[]>([])
 
 const newOrg = reactive<NewOrganizationForm>({
   parent_id: null,
@@ -130,6 +137,8 @@ const fetchOrganizations = async () => {
       to: data.to,
       last_page: data.last_page,
     }
+
+    console.log(organizations.value)
   } catch (error) {
     console.error('Error fetching organizations:', error)
   } finally {
@@ -189,14 +198,14 @@ const openEditModal = (org: Organization) => {
 
   // login info
   if (org.primary_user) {
-    editOrg.has_primary_user = true
-    editOrg.user_name = org.primary_user.name
-    editOrg.user_email = org.primary_user.email
-  } else {
-    editOrg.has_primary_user = false
-    editOrg.user_name = ''
-    editOrg.user_email = ''
-  }
+  editOrg.has_primary_user = true
+  editOrg.user_name = org.primary_user.name
+  editOrg.user_email = org.primary_user.email
+} else {
+  editOrg.has_primary_user = false
+  editOrg.user_name = ''
+  editOrg.user_email = ''
+}
 
   editOrg.edit_login = false
   editOrg.user_password = ''
@@ -544,8 +553,8 @@ onMounted(async () => {
               </td>
               <td>
                 <span v-if="org.primary_user">
-                  {{ org.primary_user.email }}
-                </span>
+  {{ org.primary_user.email }}
+</span>
                 <span v-else class="text-muted">
                   No login
                 </span>
