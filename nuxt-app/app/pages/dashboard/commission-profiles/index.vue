@@ -45,11 +45,19 @@ interface CommissionProfileRow {
 const organizations = ref<OrganizationOption[]>([])
 const profiles = ref<CommissionProfileRow[]>([])
 
+const defaultCreateShares: ShareForm[] = [
+  { label: '', percentage: 30, organization_id: null },
+  { label: 'Siraj Education Endowment Foundation', percentage: 50, organization_id: 2 },
+  { label: 'Mithqal', percentage: 18, organization_id: 1 },
+  { label: 'Bank Dhofar SAOG', percentage: 2, organization_id: 7 },
+  
+]
+
 const createForm = reactive<ProfileForm>({
   name: '',
   description: '',
   is_active: true,
-  shares: [],
+  shares: [...defaultCreateShares],
 })
 
 const editForm = reactive<ProfileForm>({
@@ -118,8 +126,7 @@ const resetCreateForm = () => {
   createForm.name = ''
   createForm.description = ''
   createForm.is_active = true
-  createForm.shares = []
-  addCreateShareRow()
+  createForm.shares = [...defaultCreateShares]
 }
 
 // ---- API calls ----
@@ -192,10 +199,15 @@ const handleCreate = async (e: Event) => {
     return
   }
 
-  // basic client-side check: no empty labels or percentages
+  // basic client-side check: no empty labels, percentages, or missing organization
   for (const s of createForm.shares) {
-    if (!s.label || s.percentage === null || Number.isNaN(Number(s.percentage))) {
-      alert('Each share must have a label and a percentage')
+    const labelTrimmed = typeof s.label === 'string' ? s.label.trim() : ''
+    if (!labelTrimmed || s.percentage === null || Number.isNaN(Number(s.percentage))) {
+      alert('Each share must have a non-empty label and a percentage')
+      return
+    }
+    if (s.organization_id === null || s.organization_id === undefined) {
+      alert('Each share must have an organization selected')
       return
     }
   }
@@ -274,8 +286,13 @@ const handleUpdate = async (e: Event) => {
   }
 
   for (const s of editForm.shares) {
-    if (!s.label || s.percentage === null || Number.isNaN(Number(s.percentage))) {
-      alert('Each share must have a label and a percentage')
+    const labelTrimmed = typeof s.label === 'string' ? s.label.trim() : ''
+    if (!labelTrimmed || s.percentage === null || Number.isNaN(Number(s.percentage))) {
+      alert('Each share must have a non-empty label and a percentage')
+      return
+    }
+    if (s.organization_id === null || s.organization_id === undefined) {
+      alert('Each share must have an organization selected')
       return
     }
   }
