@@ -425,11 +425,15 @@ onMounted(async () => {
                 <td>
                   <div class="d-flex flex-column">
                     <span class="fw-semibold">
-                      {{ row.device_brand?.name || '-' }} - {{ row.device_model?.name || '-' }}
+                     {{ row.scalefusion?.name || '—' }}  
                     </span>
                     <small class="text-muted">
                       Kiosk: {{ row.kiosk_id || '—' }} |
-                      Token: {{ row.login_generated_token || '—' }}
+                     
+               
+                    </small>
+                    <small class="text-muted">
+                      ScaleFusion: {{ row.device_brand?.name || '-' }} - {{ row.device_model?.name || '-' }}
                     </small>
                   </div>
                 </td>

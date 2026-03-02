@@ -64,10 +64,9 @@ interface MainLocationOption {
   id: number
   name: string
   city_id: number
-  company_id: number | null     // ✅ NEW (from main_locations table)
-  company?: { id: number; name: string } | null // optional if API returns it
+  company_id: number | null     
+  company?: { id: number; name: string } | null 
 }
-
 
 interface DistrictOption {
   id: number
@@ -92,8 +91,7 @@ interface CommissionProfileOption {
 
 interface DeviceForm {
   id?: number | null
-  companies_id: number | null   // ✅ NEW
-
+  companies_id: number | null    
   device_brand_id: number | null
   device_model_id: number | null
   bank_id: number | null
@@ -106,6 +104,7 @@ interface DeviceForm {
   charity_location_id: number | null
   commission_profile_id: number | null
   kiosk_id: string
+  terminal_id: string
   login_generated_token: string
   status: string
   installed_at: string | null
@@ -129,11 +128,12 @@ interface DeviceRow {
   charity_location_id?: number | null
   commission_profile_id?: number | null
   kiosk_id?: string | null
+  terminal_id?: string | null
   login_generated_token?: string | null
   status?: string
   installed_at?: string | null
   created_at?: string
-    scalefusion?: ScalefusionInfo | null
+  scalefusion?: ScalefusionInfo | null
 }
 
 interface CompanyOption {
@@ -179,6 +179,59 @@ const pagination = ref({
   last_page: 1,
 })
 
+
+
+const toNum = (v: any): number | null => {
+  if (v === null || v === undefined || v === '') return null
+  const n = Number(v)
+  return Number.isNaN(n) ? null : n
+}
+
+const eqId = (a: any, b: any) => {
+  const na = toNum(a)
+  const nb = toNum(b)
+  if (na === null || nb === null) return false
+  return na === nb
+}
+
+
+const hydrateEditLocationChain = () => {
+  // 1) Charity location -> main location / city (if missing)
+  const cl = charityLocations.value.find(x => eqId(x.id, editForm.charity_location_id))
+
+  if (!editForm.main_location_id && cl?.main_location_id) {
+    editForm.main_location_id = toNum(cl.main_location_id)
+  }
+
+  // 2) Main location -> city (if missing)
+  const ml = mainLocations.value.find(x => eqId(x.id, editForm.main_location_id))
+  if (!editForm.city_id) {
+    editForm.city_id = toNum(cl?.city_id ?? ml?.city_id)
+  }
+
+  // 3) City -> district / region (if missing)
+  const city = cities.value.find(x => eqId(x.id, editForm.city_id))
+  if (!editForm.district_id) {
+    editForm.district_id = toNum(cl?.district_id ?? city?.district_id)
+  }
+
+  if (!editForm.region_id) {
+    editForm.region_id = toNum(cl?.region_id ?? city?.region_id)
+  }
+
+  // 4) District -> region (if still missing)
+  const dist = districts.value.find(x => eqId(x.id, editForm.district_id))
+  if (!editForm.region_id && dist?.region_id) {
+    editForm.region_id = toNum(dist.region_id)
+  }
+
+  // 5) Region -> country (if missing)
+  const reg = regions.value.find(x => eqId(x.id, editForm.region_id))
+  if (!editForm.country_id) {
+    editForm.country_id = toNum(cl?.country_id ?? reg?.country_id)
+  }
+}
+
 // Create form
 const createForm = reactive<DeviceForm>({
   companies_id: null,
@@ -194,6 +247,7 @@ const createForm = reactive<DeviceForm>({
   charity_location_id: null,
   commission_profile_id: null,
   kiosk_id: '',
+   terminal_id: '',
   login_generated_token: '',
   status: 'active',
   installed_at: null,
@@ -218,6 +272,7 @@ const editForm = reactive<DeviceForm>({
   charity_location_id: null,
   commission_profile_id: null,
   kiosk_id: '',
+  terminal_id: '',
   login_generated_token: '',
   status: 'active',
   installed_at: null,
@@ -303,9 +358,8 @@ const sfDeviceStatusText = (row: DeviceRow) =>
   row.scalefusion?.device_status ? `SF: ${row.scalefusion.device_status}` : 'SF: —'
 
 
-
-const getMainLocationById = (id?: number | null) =>
-  mainLocations.value.find(m => m.id === id) ?? null
+  const getMainLocationById = (id?: number | null) =>
+  mainLocations.value.find(m => eqId(m.id, id)) ?? null
 
 const selectedCompanyNameForCreate = computed(() => {
   const ml = getMainLocationById(createForm.main_location_id)
@@ -400,40 +454,46 @@ const modelsForEdit = computed(() =>
   )
 )
 
-const regionsForEdit = computed(() =>
-  regions.value.filter((r) => r.country_id === editForm.country_id)
-)
-
-// NEW
-const districtsForEdit = computed(() =>
-  districts.value.filter((d) => d.region_id === editForm.region_id)
-)
-
-const citiesForEdit = computed(() =>
-  cities.value.filter((c) => c.district_id === editForm.district_id)
-)
-
-const mainLocationsForEdit = computed(() => {
-  const list = mainLocations.value.filter((m) => m.city_id === editForm.city_id)
-  const selected = mainLocations.value.find((m) => m.id === editForm.main_location_id)
-  if (selected && !list.some(x => x.id === selected.id)) list.unshift(selected)
+const regionsForEdit = computed(() => {
+  const list = regions.value.filter(r => eqId(r.country_id, editForm.country_id))
+  const selected = regions.value.find(r => eqId(r.id, editForm.region_id))
+  if (selected && !list.some(x => eqId(x.id, selected.id))) list.unshift(selected)
   return list
 })
 
+const districtsForEdit = computed(() => {
+  const list = districts.value.filter(d => eqId(d.region_id, editForm.region_id))
+  const selected = districts.value.find(d => eqId(d.id, editForm.district_id))
+  if (selected && !list.some(x => eqId(x.id, selected.id))) list.unshift(selected)
+  return list
+})
+
+const citiesForEdit = computed(() => {
+  const list = cities.value.filter(c => eqId(c.district_id, editForm.district_id))
+  const selected = cities.value.find(c => eqId(c.id, editForm.city_id))
+  if (selected && !list.some(x => eqId(x.id, selected.id))) list.unshift(selected)
+  return list
+})
+
+const mainLocationsForEdit = computed(() => {
+  const list = mainLocations.value.filter(m => eqId(m.city_id, editForm.city_id))
+  const selected = mainLocations.value.find(m => eqId(m.id, editForm.main_location_id))
+  if (selected && !list.some(x => eqId(x.id, selected.id))) list.unshift(selected)
+  return list
+})
 
 const charityLocationsForEdit = computed(() => {
   const list = charityLocations.value.filter((cl) => {
-    if (editForm.main_location_id) return cl.main_location_id === editForm.main_location_id
-    if (editForm.city_id) return cl.city_id === editForm.city_id
+    if (editForm.main_location_id) return eqId(cl.main_location_id, editForm.main_location_id)
+    if (editForm.city_id) return eqId(cl.city_id, editForm.city_id)
     return false
   })
 
-  const selected = charityLocations.value.find((cl) => cl.id === editForm.charity_location_id)
-  if (selected && !list.some(x => x.id === selected.id)) list.unshift(selected)
+  const selected = charityLocations.value.find(cl => eqId(cl.id, editForm.charity_location_id))
+  if (selected && !list.some(x => eqId(x.id, selected.id))) list.unshift(selected)
 
   return list
 })
-
 
 
 // ---------- Watchers: cascade resets (create) ----------
@@ -700,6 +760,7 @@ const resetCreateForm = () => {
   createForm.charity_location_id = null
   createForm.commission_profile_id = null
   createForm.kiosk_id = ''
+  createForm.terminal_id= ''
   createForm.login_generated_token = ''
   createForm.status = 'active'
   createForm.installed_at = null
@@ -733,6 +794,7 @@ const handleCreate = async (e: Event) => {
       charity_location_id: createForm.charity_location_id || null,
       commission_profile_id: createForm.commission_profile_id || null,
       kiosk_id: createForm.kiosk_id || null,
+      terminal_id: createForm.terminal_id || null,
       login_generated_token: createForm.login_generated_token || null,
       status: createForm.status,
       installed_at: createForm.installed_at || null,
@@ -752,33 +814,36 @@ const handleCreate = async (e: Event) => {
 // ---------- Edit ----------
 const openEditModal = async (id: number) => {
   try {
-    const { data } = await $api.get(`/api/devices/${id}`)
+    const res = await $api.get(`/api/devices/${id}`)
+    const data = res.data?.data ?? res.data // safe for both response shapes
 
     isHydratingEdit.value = true
     isToggle.value = true
 
     editForm.id = data.id
 
-    editForm.device_brand_id = data.device_brand_id ?? null
-    editForm.device_model_id = data.device_model_id ?? null
+    editForm.device_brand_id = toNum(data.device_brand_id)
+    editForm.device_model_id = toNum(data.device_model_id)
 
-    editForm.country_id = data.country_id ?? null
-    editForm.region_id = data.region_id ?? null
-    editForm.district_id = data.district_id ?? null
-    editForm.city_id = data.city_id ?? null
+    editForm.country_id = toNum(data.country_id)
+    editForm.region_id = toNum(data.region_id)
+    editForm.district_id = toNum(data.district_id)
+    editForm.city_id = toNum(data.city_id)
 
-    // prefer API main_location_id, else derive from charity_location
-    editForm.main_location_id = data.main_location_id ?? data.charity_location?.main_location_id ?? null
+    editForm.charity_location_id = toNum(data.charity_location_id)
+    editForm.main_location_id = toNum(data.main_location_id)
 
-    // set company from main location (or API)
+    // ✅ IMPORTANT: fill missing chain values using lookups
+    hydrateEditLocationChain()
+
+    // company based on main location (after hydration)
     const ml = getMainLocationById(editForm.main_location_id)
-    editForm.companies_id = data.companies_id ?? ml?.company_id ?? null
+    editForm.companies_id = toNum(data.companies_id ?? ml?.company_id)
 
-    editForm.charity_location_id = data.charity_location_id ?? null
-
-    editForm.bank_id = data.bank_id ?? null
+    editForm.terminal_id = data.terminal_id ?? ''
     editForm.model_number = data.model_number ?? ''
-    editForm.commission_profile_id = data.commission_profile_id ?? null
+    editForm.bank_id = toNum(data.bank_id)
+    editForm.commission_profile_id = toNum(data.commission_profile_id)
     editForm.kiosk_id = data.kiosk_id ?? ''
     editForm.login_generated_token = data.login_generated_token ?? ''
     editForm.status = data.status ?? 'active'
@@ -847,6 +912,7 @@ const handleUpdate = async (e: Event) => {
       charity_location_id: editForm.charity_location_id || null,
       commission_profile_id: editForm.commission_profile_id || null,
       kiosk_id: editForm.kiosk_id || null,
+      terminal_id: editForm.terminal_id || null,
       login_generated_token: editForm.login_generated_token || null,
       status: editForm.status,
       installed_at: editForm.installed_at || null,
@@ -988,6 +1054,20 @@ onMounted(async () => {
               <input type="text" v-model="createForm.kiosk_id" class="form-control radius-8"
                 placeholder="External kiosk ID" />
             </div>
+
+
+
+            <div class="col-lg-3 col-md-6 col-sm-12 mb-20">
+              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+                Terminal ID (From Bank)
+              </label>
+              <input type="text" v-model="createForm.terminal_id" class="form-control radius-8"
+                placeholder="Terminal ID from Bank" />
+            </div>
+
+
+
+             
 
             <!-- Row 2: Country / Region / City / Main Location -->
             <!-- Country -->
@@ -1449,6 +1529,13 @@ onMounted(async () => {
                 <input type="text" class="form-control radius-8" v-model="editForm.kiosk_id" />
               </div>
 
+
+              <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
+                <label class="form-label fw-semibold text-sm mb-8">
+                  Terminal ID (From Bank)
+                </label>
+                <input type="text" class="form-control radius-8" v-model="editForm.terminal_id" />
+              </div>
               <!-- Country -->
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
                 <label class="form-label fw-semibold text-sm mb-8">
@@ -1555,22 +1642,22 @@ onMounted(async () => {
 
 
               <div class="col-lg-6 col-md-6 col-sm-12 mb-3">
-  <label class="form-label fw-semibold text-sm mb-8">
-    Company
-    <small class="text-muted ms-1" v-if="companyLockedForEdit">(auto from Main Location)</small>
-  </label>
+                <label class="form-label fw-semibold text-sm mb-8">
+                  Company
+                  <small class="text-muted ms-1" v-if="companyLockedForEdit">(auto from Main Location)</small>
+                </label>
 
-  <select
-    v-model="editForm.companies_id"
-    class="form-select radius-8"
-    :disabled="companyLockedForEdit"
-  >
-    <option :value="null">No company</option>
-    <option v-for="co in companies" :key="co.id" :value="co.id">
-      {{ co.name }}
-    </option>
-  </select>
-</div>
+                  <select
+                    v-model="editForm.companies_id"
+                    class="form-select radius-8"
+                    :disabled="companyLockedForEdit"
+                  >
+                    <option :value="null">No company</option>
+                    <option v-for="co in companies" :key="co.id" :value="co.id">
+                      {{ co.name }}
+                    </option>
+                  </select>
+               </div>
 
 
               <!-- Status / Installed at -->

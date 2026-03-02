@@ -241,26 +241,29 @@ const handleCreate = async (e: Event) => {
 // ---- Edit ----
 const openEditModal = async (id: number) => {
   try {
-    const { data } = await $api.get(`/api/commission-profiles/${id}`)
-
-    editForm.id = data.id
-    editForm.name = data.name
-    editForm.description = data.description || ''
-    editForm.is_active = !!data.is_active
-    editForm.shares = (data.shares || []).map((s: any) => ({
-      id: s.id,
-      label: s.label,
-      percentage: Number(s.percentage),
-      organization_id: s.organization_id,
-    }))
-
-    if (!editForm.shares.length) {
-      addEditShareRow()
-    }
+    const res = await $api.get(`/api/commission-profiles/${id}`)
+    const profile = res.data?.data ?? res.data   // works if wrapped or not
 
     isToggle.value = true
-  } catch (error: any) {
-    console.error(error?.response || error)
+
+    editForm.id = profile.id
+    editForm.name = profile.name ?? ''
+    editForm.description = profile.description ?? ''
+    editForm.is_active = !!profile.is_active
+
+    // IMPORTANT: replace array contents to keep reactivity
+    editForm.shares.splice(
+      0,
+      editForm.shares.length,
+      ...(profile.shares ?? []).map((s: any) => ({
+        id: s.id ?? null,
+        label: s.label ?? '',
+        percentage: Number(s.percentage ?? 0),
+        organization_id: s.organization_id ? Number(s.organization_id) : null,
+      }))
+    )
+  } catch (e) {
+    console.error(e)
     alert('Failed to load commission profile')
   }
 }
