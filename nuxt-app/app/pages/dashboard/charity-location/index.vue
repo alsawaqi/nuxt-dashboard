@@ -188,6 +188,53 @@ const mainLocationsForEdit = computed(() => {
 })
 
 
+const mainLocationSearch = ref('')
+ 
+
+const filteredMainLocations = computed(() => {
+  const q = mainLocationSearch.value.trim().toLowerCase()
+  if (!q) return mainLocationsAll.value
+  return mainLocationsAll.value.filter(m => (m.name || '').toLowerCase().includes(q))
+})
+
+ 
+
+const createRows = ref([
+  {
+    name: '',
+    phone: '',
+    email: '',
+    contact_person_name: '',
+    contact_person_phone: '',
+    contact_person_email: '',
+    address_line1: '',
+    address_line2: '',
+    postal_code: '',
+    notes: '',
+    is_active: true,
+  }
+])
+
+const addCreateRow = () => createRows.value.push({
+  name: '',
+  phone: '',
+  email: '',
+  contact_person_name: '',
+  contact_person_phone: '',
+  contact_person_email: '',
+  address_line1: '',
+  address_line2: '',
+  postal_code: '',
+  notes: '',
+  is_active: true,
+})
+
+const removeCreateRow = (idx: number) => {
+  if (createRows.value.length <= 1) return
+  createRows.value.splice(idx, 1)
+}
+
+
 // ---- API helpers ----
 const fetchOrganizations = async () => {
   try {
@@ -338,40 +385,48 @@ const resetCreateForm = () => {
 const handleCreate = async (e: Event) => {
   e.preventDefault()
 
-  if (!createForm.country_id || !createForm.name) {
-    alert('Country and name are required')
+  if (!createForm.main_location_id) {
+    alert('Main location is required')
+    return
+  }
+
+  const locations = createRows.value
+    .map(r => ({
+      name: (r.name || '').trim(),
+      phone: (r.phone || '').trim() || null,
+      email: (r.email || '').trim() || null,
+      contact_person_name: (r.contact_person_name || '').trim() || null,
+      contact_person_phone: (r.contact_person_phone || '').trim() || null,
+      contact_person_email: (r.contact_person_email || '').trim() || null,
+      address_line1: (r.address_line1 || '').trim() || null,
+      address_line2: (r.address_line2 || '').trim() || null,
+      postal_code: (r.postal_code || '').trim() || null,
+      notes: (r.notes || '').trim() || null,
+      is_active: !!r.is_active,
+    }))
+    .filter(x => x.name.length > 0)
+
+  if (locations.length === 0) {
+    alert('Add at least one charity location name')
     return
   }
 
   isSubmit.value = true
-
   try {
-    await $api.post('/api/charity-locations', {
-      country_id: createForm.country_id,
-      region_id: createForm.region_id,
-      district_id: createForm.district_id,
-      city_id: createForm.city_id,
-      organization_id: createForm.organization_id,
+    await $api.post('/api/charity-locations/bulk', {
       main_location_id: createForm.main_location_id,
-      name: createForm.name,
-      phone: createForm.phone || null,
-      email: createForm.email || null,
-      contact_person_name: createForm.contact_person_name || null,
-      contact_person_phone: createForm.contact_person_phone || null,
-      contact_person_email: createForm.contact_person_email || null,
-      address_line1: createForm.address_line1 || null,
-      address_line2: createForm.address_line2 || null,
-      postal_code: createForm.postal_code || null,
-      notes: createForm.notes || null,
-      is_active: createForm.is_active,
+      locations,
     })
 
-    resetCreateForm()
-    table.page = 1
+    // reset
+    createForm.main_location_id = null
+    mainLocationSearch.value = ''
+    createRows.value = [/* same default object */]
+
     await fetchCharityLocations()
-  } catch (error) {
-    console.error(error)
-    alert('Failed to create charity location')
+  } catch (err) {
+    console.error(err)
+    alert('Failed to create charity locations')
   } finally {
     isSubmit.value = false
   }
@@ -634,186 +689,128 @@ onMounted(async () => {
       <div class="card-body p-40">
         <form @submit="handleCreate">
           <div class="row">
-            <!-- Country -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Country <span class="text-danger-600">*</span>
-              </label>
-              <select v-model="createForm.country_id" class="form-select radius-8" required>
-                <option :value="null" disabled>Select country</option>
-                <option v-for="c in countries" :key="c.id" :value="c.id">
-                  {{ c.name }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Region -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Region
-              </label>
-              <select v-model="createForm.region_id" class="form-select radius-8" :disabled="!createForm.country_id">
-                <option :value="null">No region</option>
-                <option v-for="r in regionsForCreate" :key="r.id" :value="r.id">
-                  {{ r.name }}
-                </option>
-              </select>
-            </div>
 
 
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                District
-              </label>
-              <select v-model="createForm.district_id" class="form-select radius-8" :disabled="!createForm.region_id">
-                <option :value="null">No district</option>
-                <option v-for="d in districtsForCreate" :key="d.id" :value="d.id">
-                  {{ d.name }}
-                </option>
-              </select>
-            </div>
+            <div class="col-lg-6 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">Search Main Location</label>
+  <input v-model="mainLocationSearch" class="form-control radius-8" placeholder="Type to search..." />
+</div>
 
-            <!-- City -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                City
-              </label>
-              <select v-model="createForm.city_id" class="form-select radius-8" :disabled="!createForm.district_id">
-                <option :value="null">No city</option>
-                <option v-for="c in citiesForCreate" :key="c.id" :value="c.id">
-                  {{ c.name }}
-                </option>
-              </select>
-            </div>
+<div class="col-lg-6 mb-20">
+  <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+    Main Location <span class="text-danger-600">*</span>
+  </label>
+  <select v-model="createForm.main_location_id" class="form-select radius-8" required>
+    <option :value="null" disabled>Select main location</option>
+    <option v-for="ml in filteredMainLocations" :key="ml.id" :value="ml.id">
+      {{ ml.name }}
+    </option>
+  </select>
+  <small class="text-muted">
+    Country / Region / District / City / Organization will be taken automatically from the selected main location.
+  </small>
+</div>
+         
 
-
-            <!-- Organization -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Organization
-              </label>
-              <select v-model="createForm.organization_id" class="form-select radius-8">
-                <option :value="null">No organization</option>
-                <option v-for="org in organizations" :key="org.id" :value="org.id">
-                  {{ org.name }}
-                </option>
-              </select>
-            </div>
-
-            <!-- Main Location (filtered by country/region/city) -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Main Location
-              </label>
-              <select v-model="createForm.main_location_id" class="form-select radius-8"
-                :disabled="!createForm.city_id">
-                <option :value="null">No main location</option>
-                <option v-for="ml in mainLocationsForCreate" :key="ml.id" :value="ml.id">
-                  {{ ml.name }}
-                </option>
-              </select>
-            </div>
+       
 
 
 
-            <!-- Charity Location Name -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Charity Location Name <span class="text-danger-600">*</span>
-              </label>
-              <input type="text" v-model="createForm.name" class="form-control radius-8"
-                placeholder="Enter charity location name" required />
-            </div>
+            <div v-for="(row, idx) in createRows" :key="idx" class="card mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="fw-semibold">Charity Location {{ idx + 1 }}</div>
+    <button type="button" class="btn btn-sm btn-outline-danger"
+      @click="removeCreateRow(idx)" :disabled="createRows.length <= 1">
+      Remove
+    </button>
+  </div>
 
-            <!-- Phone -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Phone
-              </label>
-              <input type="text" v-model="createForm.phone" class="form-control radius-8"
-                placeholder="Enter phone number" />
-            </div>
+  <div class="card-body">
+    <div class="row">
+      <!-- Name -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">
+          Charity Location Name <span class="text-danger-600">*</span>
+        </label>
+        <input type="text" v-model="row.name" class="form-control radius-8" placeholder="Enter location name" />
+      </div>
 
-            <!-- Email -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Email
-              </label>
-              <input type="email" v-model="createForm.email" class="form-control radius-8" placeholder="Enter email" />
-            </div>
+      <!-- Phone -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Phone</label>
+        <input type="text" v-model="row.phone" class="form-control radius-8" placeholder="Enter phone number" />
+      </div>
 
-            <!-- Contact Person Name -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Contact Person Name
-              </label>
-              <input type="text" v-model="createForm.contact_person_name" class="form-control radius-8"
-                placeholder="Contact person name" />
-            </div>
+      <!-- Email -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Email</label>
+        <input type="email" v-model="row.email" class="form-control radius-8" placeholder="Enter email" />
+      </div>
 
-            <!-- Contact Person Phone -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Contact Person Phone
-              </label>
-              <input type="text" v-model="createForm.contact_person_phone" class="form-control radius-8"
-                placeholder="Contact person phone" />
-            </div>
+      <!-- Contact Person Name -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Contact Person Name</label>
+        <input type="text" v-model="row.contact_person_name" class="form-control radius-8" placeholder="Contact person name" />
+      </div>
 
-            <!-- Contact Person Email -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Contact Person Email
-              </label>
-              <input type="email" v-model="createForm.contact_person_email" class="form-control radius-8"
-                placeholder="Contact person email" />
-            </div>
+      <!-- Contact Person Phone -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Contact Person Phone</label>
+        <input type="text" v-model="row.contact_person_phone" class="form-control radius-8" placeholder="Contact person phone" />
+      </div>
 
-            <!-- Address Line 1 -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Address Line 1
-              </label>
-              <input type="text" v-model="createForm.address_line1" class="form-control radius-8"
-                placeholder="Address line 1" />
-            </div>
+      <!-- Contact Person Email -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Contact Person Email</label>
+        <input type="email" v-model="row.contact_person_email" class="form-control radius-8" placeholder="Contact person email" />
+      </div>
 
-            <!-- Address Line 2 -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Address Line 2
-              </label>
-              <input type="text" v-model="createForm.address_line2" class="form-control radius-8"
-                placeholder="Address line 2" />
-            </div>
+      <!-- Address Line 1 -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Address Line 1</label>
+        <input type="text" v-model="row.address_line1" class="form-control radius-8" placeholder="Address line 1" />
+      </div>
 
-            <!-- Postal Code -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Postal Code
-              </label>
-              <input type="text" v-model="createForm.postal_code" class="form-control radius-8"
-                placeholder="Postal code" />
-            </div>
+      <!-- Address Line 2 -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Address Line 2</label>
+        <input type="text" v-model="row.address_line2" class="form-control radius-8" placeholder="Address line 2" />
+      </div>
 
-            <!-- Notes -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
-              <label class="form-label fw-semibold text-primary-light text-sm mb-8">
-                Notes
-              </label>
-              <textarea v-model="createForm.notes" class="form-control radius-8" rows="3"
-                placeholder="Additional notes about this location"></textarea>
-            </div>
+      <!-- Postal Code -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Postal Code</label>
+        <input type="text" v-model="row.postal_code" class="form-control radius-8" placeholder="Postal code" />
+      </div>
 
-            <!-- Active toggle -->
-            <div class="col-lg-4 col-md-6 col-sm-12 mb-20 d-flex align-items-center">
-              <div class="form-check form-switch">
-                <input class="form-check-input" type="checkbox" id="isActiveCreate" v-model="createForm.is_active" />
-                <label class="form-check-label ms-2" for="isActiveCreate">
-                  Active
-                </label>
-              </div>
-            </div>
+      <!-- Notes -->
+      <div class="col-lg-8 col-md-12 col-sm-12 mb-20">
+        <label class="form-label fw-semibold text-primary-light text-sm mb-8">Notes</label>
+        <textarea v-model="row.notes" class="form-control radius-8" rows="3"
+          placeholder="Additional notes about this location"></textarea>
+      </div>
+
+      <!-- Active toggle -->
+      <div class="col-lg-4 col-md-6 col-sm-12 mb-20 d-flex align-items-center">
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" :id="'isActiveCreate_' + idx" v-model="row.is_active" />
+          <label class="form-check-label ms-2" :for="'isActiveCreate_' + idx">
+            Active
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<button type="button" class="btn btn-sm btn-outline-primary" @click="addCreateRow">
+  + Add another location
+</button>
+
+
+
+         
+ 
 
             <!-- Buttons full width -->
             <div class="col-12 d-flex align-items-center justify-content-center gap-3 mt-24">

@@ -19,6 +19,19 @@ const url = `https://app.scalefusion.com/cloud/dashboard/remote_mirror/${id}`
 const open = () => window.open(url, '_blank', 'noopener,noreferrer')
 
 
+
+const getDevice = async () => {
+  try {
+    const res = await $api.get('/api/scalefusion/device',{params: { device_id: id }})
+       
+    device.value =  res.data
+     
+  } catch (error) {
+    console.error('Error fetching device:', error)
+  }
+}
+
+
 const RebootDevice = async () => {
   try {
     await $api.post('/api/scalefusion/device/reboot', {
@@ -44,16 +57,67 @@ const sendAlarm = async () => {
   }
 }
 
+const sfBusy = ref<Record<number, boolean>>({})
+
+const isSfBusy = ref(false);
+
+// Adjust this based on where you stored Scalefusion data.
+// If your merge is: row.scalefusion or row.device.scalefusion, update it here.
+const getSfId = (): number | null => {
+  return id ? Number(id) : null ;
+}
+
+const lockOne = async () => {
+  const sfId = getSfId()
+  if (!sfId) return
+
+  isSfBusy.value = true;
+
+  if (!confirm('Lock this device (Kiosk mode)?')) return
+
+  sfBusy.value[sfId] = true
+  try {
+    await $api.post('/api/scalefusion/devices/lock', { device_ids: [sfId] })
+    // optional: show toast / refresh device list
+    // await fetchDevices()
+  } catch (e: any) {
+    console.error(e)
+    alert('Failed to lock device')
+  } finally {
+    sfBusy.value[sfId] = false
+    isSfBusy.value = false;
+  }
+}
+
+const unlockOne = async () => {
+  const sfId = getSfId()
+  if (!sfId) return
+
+  isSfBusy.value = true;
+
+  if (!confirm('Unlock this device?')) return
+
+  sfBusy.value[device.value.id] = true
+  try {
+    await $api.post('/api/scalefusion/devices/unlock', { device_ids: [sfId] })
+    // optional: show toast / refresh device list
+    // await fetchDevices()
+  } catch (e: any) {
+    console.error(e)
+    alert('Failed to unlock device')
+  } finally {
+    sfBusy.value[device.value.id] = false
+    isSfBusy.value = false;
+  }
+}
+
+
+
 
 onMounted(async () => {
-  try {
-    const res = await $api.get('/api/scalefusion/device',{params: { device_id: id }})
-       
-    device.value =  res.data
-     
-  } catch (error) {
-    console.error('Error fetching device:', error)
-  }
+
+  await getDevice();
+ 
 })
 
 </script>
@@ -153,6 +217,35 @@ onMounted(async () => {
                   <iconify-icon icon="mdi:bell-ring-outline" class="text-sm"></iconify-icon>
                   <span>Send Alarm</span>
                 </button>
+
+
+
+                <div class="d-inline-flex align-items-center gap-2">
+    <!-- LOCK -->
+    <button
+      type="button"
+      class="sf-btn sf-btn-lock"
+      :disabled="!getSfId() || isSfBusy"
+      @click="lockOne()"
+      title="Lock device (Kiosk mode)"
+    >
+      <span v-if="isSfBusy" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      <iconify-icon v-else icon="mdi:lock" class="fs-5"></iconify-icon>
+    </button>
+
+    <!-- UNLOCK -->
+    <button
+      type="button"
+      class="sf-btn sf-btn-unlock"
+      :disabled="!getSfId() || isSfBusy"
+      @click="unlockOne()"
+      title="Unlock device"
+    >
+      <span v-if="isSfBusy" class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+      <iconify-icon v-else icon="mdi:lock-open-variant" class="fs-5"></iconify-icon>
+    </button>
+  </div>
+                 
               </div>
             </div>
 
@@ -315,3 +408,31 @@ onMounted(async () => {
     </div>
   </div>
 </template>
+
+<style>
+.sf-btn{
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform .12s ease, filter .12s ease, opacity .12s ease;
+}
+
+.sf-btn:active { transform: scale(0.95); }
+.sf-btn:disabled { opacity: .55; cursor: not-allowed; }
+
+.sf-btn-lock{
+  background: rgba(220, 53, 69, 0.12);
+  color: #dc3545;
+}
+.sf-btn-lock:hover{ filter: brightness(0.95); }
+
+.sf-btn-unlock{
+  background: rgba(25, 135, 84, 0.12);
+  color: #198754;
+}
+.sf-btn-unlock:hover{ filter: brightness(0.95); }
+</style>

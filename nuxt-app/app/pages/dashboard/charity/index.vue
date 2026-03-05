@@ -430,14 +430,41 @@ watch(
                   <td>{{ transaction.bank?.name }}</td>
 
                   <td>
-                    {{ transaction.bank_response?.sessionData?.issuer }}
+                
+
+                  <div v-if="transaction.bank_transaction_id == 2">
+
+                    {{ transaction.bank_response?.receiptResponse?.cardType }} 
+
                     <span class="text-muted d-block text-sm">
-                      {{ transaction.bank_response?.sessionData?.binId }}XX{{
+                      {{ transaction.bank_response?.receiptResponse?.cardNumber }} 
+                    </span>
+
+                  </div>
+
+
+
+
+                       <div v-else-if="transaction.bank_transaction_id == 1">
+
+                        {{ transaction.bank_response?.sessionData?.issuer }}
+                    <span class="text-muted d-block text-sm">
+                      {{ transaction.bank_response?.sessionData?.binId }}XXXXXXX{{
                         transaction.bank_response?.sessionData?.panId }}
                     </span>
+                       </div>
+                   
+                    
                   </td>
 
-                  <td>{{ transaction.bank_response?.statusCode }}</td>
+                  <td>
+
+
+                    {{ transaction.bank_transaction_id == 2 ? transaction.bank_response?.receiptResponse?.approvalCode + ' -  SOHAR BANK'  : transaction.bank_response?.statusCode + ' -  OMAN BANK' }}
+                    
+                   
+                  
+                  </td>
 
                   <td class="fw-semibold">{{ fmtMoney(transaction.total_amount) }}</td>
 

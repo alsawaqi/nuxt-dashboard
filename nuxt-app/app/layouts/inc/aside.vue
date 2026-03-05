@@ -37,6 +37,7 @@ const adminGroupRoutes = [
   '/dashboard/banks',
   '/dashboard/commission-profiles',
   '/dashboard/device',
+  '/dashboard/cash-collection',
 ]
 
 // Reusable helper
@@ -107,6 +108,17 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
               class="menu-icon"
             ></iconify-icon>
             <span>Charities</span>
+          </NuxtLink>
+        </li>
+
+        <!-- Transactions (advanced filters) -->
+        <li :class="{ active: isActive('/dashboard/transactions') }">
+          <NuxtLink to="/dashboard/transactions">
+            <iconify-icon
+              icon="mdi:bank-transfer"
+              class="menu-icon"
+            ></iconify-icon>
+            <span>Transactions</span>
           </NuxtLink>
         </li>
 
@@ -325,6 +337,14 @@ const isAdminGroupActive = computed(() => isInRoutes(adminGroupRoutes))
             <li class="sidebar-menu-group-title small px-3 mt-3">
               Devices &amp; Finance
             </li>
+
+
+            <li :class="{ active: isActive('/dashboard/cash-collection') }">
+  <NuxtLink to="/dashboard/cash-collection">
+    <iconify-icon icon="mdi:cash-register" class="menu-icon"></iconify-icon>
+    <span>Cash Collection</span>
+  </NuxtLink>
+</li>
 
             <li :class="{ active: isActive('/dashboard/device-brands') }">
               <NuxtLink to="/dashboard/device-brands">
